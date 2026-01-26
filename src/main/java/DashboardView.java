@@ -1,7 +1,10 @@
-import org.knowm.xchart.*;
+import org.knowm.xchart.QuickChart;
+import org.knowm.xchart.XChartPanel;
+import org.knowm.xchart.XYChart;
+
 import javax.swing.*;
 import java.awt.*;
-import java.util.*;
+import java.util.ArrayList;
 import java.util.List;
 
 public class DashboardView extends JFrame implements SensorObserver {

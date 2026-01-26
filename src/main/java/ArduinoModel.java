@@ -1,4 +1,5 @@
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ArduinoModel {
     private final List<SensorObserver> observers;
