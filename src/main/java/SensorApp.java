@@ -16,7 +16,7 @@ public class SensorApp {
             try {
                 //Initial base values for smooth random walking
                 double t1 = 25.0, t2 = 30.0, t3 = 60.0;
-                double p1 = 1000.0, p2 = 1010.0, p3 = 990.0;
+                double p1, p2, p3;
 
                 while (true) {
                     //Simulate temperatures (walking values)
