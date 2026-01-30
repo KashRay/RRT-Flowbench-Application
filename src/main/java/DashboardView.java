@@ -18,6 +18,11 @@ public class DashboardView extends JFrame implements SensorObserver {
     private final XChartPanel<XYChart> pressurePanel;
     private final XChartPanel<XYChart> temperaturePanel;
 
+    //View Switching Components
+    private JComboBox<String> graphSelector;
+    private JPanel cardPanel;
+    private CardLayout cardLayout;
+
     //DATA HISTORY LINKS
     //X-axis (time) shared by each graph
     private final List<Double> xData;
@@ -85,34 +90,58 @@ public class DashboardView extends JFrame implements SensorObserver {
         flowChart.addSeries("CFM @ Orifice", xData, cfmOrificeData);
         flowChart.getStyler().setLegendVisible(true);
         flowChart.getStyler().setXAxisMin(0.0);
+        flowChart.getStyler().setToolTipsEnabled(true);
         //Graph 2: Pressures
         pressureChart = QuickChart.getChart("Pressure Sensors", "Time (s)", "Pressure (hPa)", "P1", xData, p1Data);
         pressureChart.addSeries("P2", xData, p2Data);
         pressureChart.addSeries("P3", xData, p3Data);
         pressureChart.getStyler().setLegendVisible(true);
         pressureChart.getStyler().setXAxisMin(0.0);
+        pressureChart.getStyler().setToolTipsEnabled(true);
         //Graph 3: Temperatures
         temperatureChart = QuickChart.getChart("Temperature Sensors", "Time (s)", "Temp (°C)", "T1", xData, t1Data);
         temperatureChart.addSeries("T2", xData, t2Data);
         temperatureChart.addSeries("T3", xData, t3Data);
         temperatureChart.getStyler().setLegendVisible(true);
         temperatureChart.getStyler().setXAxisMin(0.0);
+        temperatureChart.getStyler().setToolTipsEnabled(true);
 
         //Wrap charts in panels
         flowPanel = new XChartPanel<>(flowChart);
         pressurePanel = new XChartPanel<>(pressureChart);
         temperaturePanel = new XChartPanel<>(temperatureChart);
 
+        //CHART VIEW SWITCHING LOGIC
+        //Card panel (holds 3 graphs on top of each other)
+        cardLayout = new CardLayout();
+        cardPanel = new JPanel(cardLayout);
+        cardPanel.add(flowPanel, "Airflow Calculations");
+        cardPanel.add(pressurePanel, "Pressure Sensors");
+        cardPanel.add(temperaturePanel, "Temperature Sensors");
+        //Selector Dropdown
+        String[] options = {"Airflow Calculations", "Pressure Sensors", "Temperature Sensors"};
+        graphSelector = new JComboBox<>(options);
+        graphSelector.setFont(new Font("Arial", Font.BOLD, 14));
+        graphSelector.addActionListener(e -> {
+            String selected = (String) graphSelector.getSelectedItem();
+            cardLayout.show(cardPanel, selected);
+        });
+        //Container for selector + graph
+        JPanel centerContainer = new JPanel(new BorderLayout());
+        //Small header panel for the dropdown
+        JPanel selectorHeader = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        selectorHeader.setBackground(Color.lightGray);
+        selectorHeader.add(new JLabel("Select Graph View: "));
+        selectorHeader.add(graphSelector);
+        centerContainer.add(selectorHeader, BorderLayout.NORTH);
+        centerContainer.add(cardPanel, BorderLayout.CENTER);
+
         //Create layouts
         JPanel controlPanel = createControlPanel();
-        JPanel graphPanel = new JPanel(new GridLayout(1, 3)); //Place graphs next to each other horizontally
-        graphPanel.add(flowPanel);
-        graphPanel.add(pressurePanel);
-        graphPanel.add(temperaturePanel);
 
         //Add to window
-        this.add(controlPanel, BorderLayout.NORTH);
-        this.add(graphPanel, BorderLayout.CENTER);
+        this.add(controlPanel, BorderLayout.NORTH); //Controls on top
+        this.add(centerContainer, BorderLayout.CENTER); //Swappable graphs in the center
 
         this.setVisible(true);
     }
