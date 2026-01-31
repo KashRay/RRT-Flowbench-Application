@@ -19,9 +19,9 @@ public class DashboardView extends JFrame implements SensorObserver {
     private final XChartPanel<XYChart> temperaturePanel;
 
     //View Switching Components
-    private JComboBox<String> graphSelector;
-    private JPanel cardPanel;
-    private CardLayout cardLayout;
+    private final JComboBox<String> graphSelector;
+    private final JPanel cardPanel;
+    private final CardLayout cardLayout;
 
     //DATA HISTORY LINKS
     //X-axis (time) shared by each graph
@@ -246,8 +246,8 @@ public class DashboardView extends JFrame implements SensorObserver {
         JPanel statusPanel = new JPanel(new GridLayout(6, 1, 5, 5));
         sensorStatusLabels = new JLabel[6];
         String[] statusNames = {
-                "Pressure Diff Sensor 1 Status", "Pressure Diff Sensor 2 Status", "Pressure Diff Sensor 3 Status",
-                "Temperature Sensor 1 Status", "Temperature Sensor 2 Status", "Temperature Sensor 3 Status"
+                "Pressure Diff Sensor 1 Status:", "Pressure Diff Sensor 2 Status:", "Pressure Diff Sensor 3 Status:",
+                "Temperature Sensor 1 Status:", "Temperature Sensor 2 Status:", "Temperature Sensor 3 Status:"
         };
 
         for (int i = 0; i < 6; i++) {
@@ -328,6 +328,27 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
+     * Updates the individual sensor status lights with the current value.
+     * @param sensorID The sensor the new reading came from
+     * @param value The new sensor reading
+     */
+    private void updateStatusDisplay(String sensorID, double value) {
+        int index = -1;
+        String unit = "";
+        String sensor = "";
+        switch (sensorID) {
+            case "P1": sensor = "Pressure Diff Sensor 1 Status"; index = 0; unit = "hPa"; break;
+            case "P2": sensor = "Pressure Diff Sensor 2 Status"; index = 1; unit = "hPa"; break;
+            case "P3": sensor = "Pressure Diff Sensor 3 Status"; index = 2; unit = "hPa"; break;
+            case "T1": sensor = "Temperature Sensor 1 Status"; index = 3; unit = "°C"; break;
+            case "T2": sensor = "Temperature Sensor 2 Status"; index = 4; unit = "°C"; break;
+            case "T3": sensor = "Temperature Sensor 3 Status"; index = 5; unit = "°C"; break;
+        }
+
+        if (index != -1) sensorStatusLabels[index].setText(String.format("%s: %.1f %s", sensor, value, unit));
+    }
+
+    /**
      * Adjusts the GUI depending on sensor reading updates.
      */
     @Override
@@ -344,6 +365,10 @@ public class DashboardView extends JFrame implements SensorObserver {
                 case "P3": currentP3 = value; break;
             }
 
+            //Real-time status box updates
+            updateStatusDisplay(sensorID, value);
+
+            //Logging and graphing logic
             if (isLogging) {
                 //Use the last sensor (P3) as the trigger to add full set of data to the graph
                 if (sensorID.equals("P3")) {
@@ -367,6 +392,7 @@ public class DashboardView extends JFrame implements SensorObserver {
                     double calcCFM = Math.sqrt(Math.abs(currentP1)) * 0.5;
                     cfm28Data.add(calcCFM);
                     cfmOrificeData.add(calcCFM * 0.8);
+                    double calcMassFlow = calcCFM * 0.075;
 
                     //Update charts
                     temperatureChart.updateXYSeries("T1", xData, t1Data, null);
@@ -381,6 +407,9 @@ public class DashboardView extends JFrame implements SensorObserver {
                     //Update labels and repaint
                     cfm28Label.setText(String.format("CFM @ 28: %.2f", calcCFM));
                     cfmOrificeLabel.setText(String.format("CFM @ Orifice: %.2f", calcCFM * 0.8));
+                    massFlowRateLabel.setText(String.format("Mass Flow: %.3f", calcMassFlow));
+
+                    //Repaint
                     flowPanel.repaint();
                     pressurePanel.repaint();
                     temperaturePanel.repaint();
