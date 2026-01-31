@@ -6,6 +6,9 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,6 +43,8 @@ public class DashboardView extends JFrame implements SensorObserver {
     //Temporary buffers to hold values until the "commit" tick
     private double currentT1, currentT2, currentT3;
     private double currentP1, currentP2, currentP3;
+    //Test run storage (for exporting to CSV)
+    private final List<TestRun> sessionRuns = new ArrayList<>();
 
     //UI Controls (Inputs)
     private JTextField valveLiftInput;
@@ -63,6 +68,8 @@ public class DashboardView extends JFrame implements SensorObserver {
     private boolean isLogging = false;
     private long startTime;
     private double targetDuration;
+    private double currentValveLift;
+    private double currentOrificeDiameter;
 
     public DashboardView(ArduinoModel model) {
         //Setup basic window behavior
@@ -239,7 +246,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         //Export to CSV button
         exportButton = new JButton("Export CSV");
         exportButton.setBackground(Color.YELLOW);
-        //*Export logic to be added later
+        exportButton.addActionListener(_ -> exportToCSV());
         c.gridx = 2; c.gridy = 4; c.gridwidth = 1; panel.add(exportButton, c);
 
         //RIGHT COLUMN: Sensor Status
@@ -281,19 +288,29 @@ public class DashboardView extends JFrame implements SensorObserver {
 
     /**
      * Method to set up UI and chart for logging.
-     * Double checks if the inputted duration is valid.
+     * Double checks if the inputted values are valid.
      */
     private void startLogging() {
         try {
-            //Check if duration is of type double
+            //Validate duration
             double seconds = Double.parseDouble(durationInput.getText());
             if (seconds <= 0) throw new NumberFormatException();
 
-            //Clear all data points
-            resetDataLists();
+            //Validate valve lift
+            double lift = Double.parseDouble(valveLiftInput.getText());
+            if (lift < 0) throw new NumberFormatException();
+
+            //Validate orifice diameter
+            double orifice = Double.parseDouble(orificeInput.getText());
+            if (orifice <= 0) throw new NumberFormatException();
 
             //Setup logging variables
-            targetDuration = seconds;
+            this.targetDuration = seconds;
+            this.currentValveLift = lift;
+            this.currentOrificeDiameter = orifice;
+
+            //Start test
+            resetDataLists(); //Clear all data values
             startTime = System.currentTimeMillis();
             isLogging = true;
 
@@ -303,18 +320,33 @@ public class DashboardView extends JFrame implements SensorObserver {
             testStatusLabel.setBackground(Color.GREEN);
         }
         catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Please enter a valid duration!", "ERROR", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Please ensure your input values are valid numbers!", "ERROR", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     /**
-     * Method to reset UI upon completion of logging data
+     * Method to reset UI upon completion of logging data.
+     * Save current session data.
      */
     private void stopLogging() {
+        if (!isLogging) return; //Prevent double saving
+
         isLogging = false;
         toggleInputs(true);
-        testStatusLabel.setText("Status: STOPPED");
+        testStatusLabel.setText("Status: STOPPED. Data Saved");
         testStatusLabel.setBackground(new Color(220, 220, 240));
+
+        //Clean comment for CSV
+        String safeComment = commentsArea.getText().replace("\n", " ").replace(",", ";").trim();
+
+        //Create a snapshot of the current run
+        TestRun run = new TestRun(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData, safeComment);
+
+        //Add to session history
+        sessionRuns.add(run);
+
+        //Update status to show how many runs are pending export
+        JOptionPane.showMessageDialog(this, "Run #" + sessionRuns.size() + " recorded!\nAdjust values and press RUN for next trial,\nor press EXPORT to save all.");
     }
 
     /**
@@ -346,6 +378,58 @@ public class DashboardView extends JFrame implements SensorObserver {
         }
 
         if (index != -1) sensorStatusLabels[index].setText(String.format("%s: %.1f %s", sensor, value, unit));
+    }
+
+    /**
+     * Method for exporting all recorded test runs to a CSV file.
+     */
+    private void exportToCSV() {
+        if (sessionRuns.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No session recorded! Run a test first.", "ERROR", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Save Flow Bench Data");
+
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File file = chooser.getSelectedFile();
+
+            //Ensure .csv extension
+            if (!file.getName().toLowerCase().endsWith(".csv")) file = new File(file.getParentFile(), file.getName() + ".csv");
+
+            try (PrintWriter writer = new PrintWriter(file)) {
+                //CSV header
+                writer.println("Run_ID,Valve_Lift,Orifice_Dia,Time,P1(hPa),P2(hPa),P3(hPa),T1(C),T2(C),T3(C),CFM@28,CFM@Orifice,Comment");
+
+                //Loop through all saved runs
+                for (int i = 0; i < sessionRuns.size(); i++) {
+                    TestRun run = sessionRuns.get(i);
+                    int runID = i + 1;
+
+                    //Loop through data points in this run
+                    for (int j = 0; j < run.time.size(); j++) {
+                        writer.printf("%d,%s,%s,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%s%n",
+                                runID,
+                                run.valveLift,
+                                run.orificeDiameter,
+                                run.time.get(j),
+                                run.p1.get(j), run.p2.get(j), run.p3.get(j),
+                                run.t1.get(j), run.t2.get(j), run.t3.get(j),
+                                run.flow.get(j), run.flowOrifice.get(j),
+                                run.comment
+                        );
+                    }
+                }
+                JOptionPane.showMessageDialog(this, "Export Successful!\nSession cleared.");
+
+                //Clear session memory
+                sessionRuns.clear();
+            }
+            catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage());
+            }
+        }
     }
 
     /**
