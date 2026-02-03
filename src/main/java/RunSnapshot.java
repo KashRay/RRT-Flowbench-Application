@@ -6,16 +6,16 @@ import java.util.List;
  * @author Rayyan Kashif
  * @version 1.0
  */
-public class TestRun {
+public class RunSnapshot {
     Double valveLift;
     Double orificeDiameter;
     List<Double> time, p1, p2, p3, t1, t2, t3, flow, flowOrifice;
     String comment;
 
-    public TestRun(Double valveLift, Double orifice,
-                   List<Double> t, List<Double> p1, List<Double> p2, List<Double> p3,
-                   List<Double> t1, List<Double> t2, List<Double> t3,
-                   List<Double> cfm, List<Double> cfmO, String comment)
+    public RunSnapshot(Double valveLift, Double orifice,
+                       List<Double> t, List<Double> p1, List<Double> p2, List<Double> p3,
+                       List<Double> t1, List<Double> t2, List<Double> t3,
+                       List<Double> cfm, List<Double> cfmO, String comment)
     {
         this.valveLift = valveLift;
         this.orificeDiameter = orifice;

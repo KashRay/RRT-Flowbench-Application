@@ -65,7 +65,7 @@ public class DashboardView extends JFrame implements SensorObserver {
     private double currentT1, currentT2, currentT3;
     private double currentP1, currentP2, currentP3;
     //Test run storage (for exporting to CSV)
-    private final List<TestRun> sessionRuns = new ArrayList<>();
+    private final List<RunSnapshot> sessionRuns = new ArrayList<>();
 
     //UI Controls
     private JTextField valveLiftInput;
@@ -411,6 +411,7 @@ public class DashboardView extends JFrame implements SensorObserver {
 
     /**
      * Method to reset UI upon completion of logging data.
+     * Triggers graph generation upon logging completion.
      * Save current session data.
      */
     private void stopLogging() {
@@ -421,11 +422,14 @@ public class DashboardView extends JFrame implements SensorObserver {
         testStatusLabel.setText("Status: STOPPED. Data Saved");
         testStatusLabel.setBackground(new Color(220, 220, 240));
 
+        //Render the graphs upon completion
+        renderCharts();
+
         //Clean comment for CSV
         String safeComment = commentsArea.getText().replace("\n", " ").replace(",", ";").trim();
 
         //Create a snapshot of the current run
-        TestRun run = new TestRun(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData, safeComment);
+        RunSnapshot run = new RunSnapshot(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData, safeComment);
 
         //Add to session history
         sessionRuns.add(run);
@@ -513,7 +517,7 @@ public class DashboardView extends JFrame implements SensorObserver {
 
                 //Loop through all saved runs
                 for (int i = 0; i < sessionRuns.size(); i++) {
-                    TestRun run = sessionRuns.get(i);
+                    RunSnapshot run = sessionRuns.get(i);
                     int runID = i + 1;
 
                     //Loop through data points in this run
@@ -544,7 +548,35 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
-     * Adjusts the GUI depending on sensor reading updates.
+     * Updates the charts with the full history of the run.
+     */
+    private void renderCharts() {
+        //Update temperatures chart
+        temperatureChart.updateXYSeries("T1", xData, t1Data, null);
+        temperatureChart.updateXYSeries("T2", xData, t2Data, null);
+        temperatureChart.updateXYSeries("T3", xData, t3Data, null);
+
+        //Update pressure chart
+        pressureChart.updateXYSeries("P1", xData, p1Data, null);
+        pressureChart.updateXYSeries("P2", xData, p2Data, null);
+        pressureChart.updateXYSeries("P3", xData, p3Data, null);
+
+        //Update airflow chart
+        flowChart.updateXYSeries("CFM @ 28", xData, cfm28Data, null);
+        flowChart.updateXYSeries("CFM @ Orifice", xData, cfmOrificeData, null);
+
+        //Repaint all graphs
+        flowPanel.repaint();
+        pressurePanel.repaint();
+        temperaturePanel.repaint();
+    }
+
+    /**
+     * Sends sensor updates to GUI labels.
+     * Performs calculations for CFM and Flow Rate labels.
+     * Records all data values in data history links.
+     * @param sensorID The ID of the sensor currently being read
+     * @param value The value of the sensor currently being read
      */
     @Override
     public void update(String sensorID, double value) {
@@ -580,7 +612,7 @@ public class DashboardView extends JFrame implements SensorObserver {
             cfmOrificeLabel.setText(String.format("CFM @ Orifice: %.2f", rtCFMOrifice));
             massFlowRateLabel.setText(String.format("Mass Flow: %.3f", rtMassFlow));
 
-            //Logging and graphing logic
+            //Logging
             if (isLogging) {
                 //Use the last sensor (P3) as the trigger to add full set of data to the graph
                 if (sensorID.equals("P3")) {
@@ -601,26 +633,16 @@ public class DashboardView extends JFrame implements SensorObserver {
                     p1Data.add(currentP1); p2Data.add(currentP2); p3Data.add(currentP3);
                     cfm28Data.add(rtCFM28);
                     cfmOrificeData.add(rtCFMOrifice);
-
-                    //Update charts
-                    temperatureChart.updateXYSeries("T1", xData, t1Data, null);
-                    temperatureChart.updateXYSeries("T2", xData, t2Data, null);
-                    temperatureChart.updateXYSeries("T3", xData, t3Data, null);
-                    pressureChart.updateXYSeries("P1", xData, p1Data, null);
-                    pressureChart.updateXYSeries("P2", xData, p2Data, null);
-                    pressureChart.updateXYSeries("P3", xData, p3Data, null);
-                    flowChart.updateXYSeries("CFM @ 28", xData, cfm28Data, null);
-                    flowChart.updateXYSeries("CFM @ Orifice", xData, cfmOrificeData, null);
-
-                    //Repaint
-                    flowPanel.repaint();
-                    pressurePanel.repaint();
-                    temperaturePanel.repaint();
                 }
             }
         });
     }
 
+    /**
+     * Helper method for calculating the constant value of beta.
+     * @param currentOrificeDiameter The orifice value in inches
+     * @return The calculated beta value
+     */
     private double calculateBeta(double currentOrificeDiameter) {
         return currentOrificeDiameter/D;
     }
