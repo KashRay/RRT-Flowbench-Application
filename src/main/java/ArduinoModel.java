@@ -1,6 +1,13 @@
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Manages the sensor data and notifies observers.
+ * Broadcasts updates to anyone listening.
+ *
+ * @author Rayyan Kashif
+ * @version 1.0
+ */
 public class ArduinoModel {
     private final List<SensorObserver> observers;
 

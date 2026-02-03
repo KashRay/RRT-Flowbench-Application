@@ -1,26 +1,17 @@
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A small class to hold the data for a single test run.
+ * @author Rayyan Kashif
+ * @version 1.0
+ */
 public class TestRun {
     Double valveLift;
     Double orificeDiameter;
     List<Double> time, p1, p2, p3, t1, t2, t3, flow, flowOrifice;
     String comment;
 
-    /**
-     * A small class to hold the data for a single test run.
-     * @param valveLift The current valve lift
-     * @param orifice The current orifice diameter
-     * @param t The list of time stamps
-     * @param p1 The list of P1 sensor readings
-     * @param p2 The list of P2 sensor readings
-     * @param p3 The list of P3 sensor readings
-     * @param t1 The list of T1 sensor readings
-     * @param t2 The list of T2 sensor readings
-     * @param t3 The list of T3 sensor readings
-     * @param cfm The list of calculated CFM @ 28 in H20 values
-     * @param cfmO the List of calculated CFM @ orifice
-     */
     public TestRun(Double valveLift, Double orifice,
                    List<Double> t, List<Double> p1, List<Double> p2, List<Double> p3,
                    List<Double> t1, List<Double> t2, List<Double> t3,
