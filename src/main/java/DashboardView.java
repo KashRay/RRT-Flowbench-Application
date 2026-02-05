@@ -43,6 +43,7 @@ public class DashboardView extends JFrame implements SensorObserver {
     private final XChartPanel<XYChart> temperaturePanel;
 
     //View Switching Components
+    private final JComboBox<String> runSelector;
     private final JComboBox<String> graphSelector;
     private final JPanel cardPanel;
     private final CardLayout cardLayout;
@@ -121,6 +122,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         flowChart.getStyler().setLegendVisible(true);
         flowChart.getStyler().setXAxisMin(0.0);
         flowChart.getStyler().setToolTipsEnabled(true);
+        flowChart.getStyler().setZoomEnabled(true);
         //Graph 2: Pressures
         pressureChart = QuickChart.getChart("Pressure Sensors", "Time (s)", "Pressure (hPa)", "P1", xData, p1Data);
         pressureChart.addSeries("P2", xData, p2Data);
@@ -128,6 +130,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         pressureChart.getStyler().setLegendVisible(true);
         pressureChart.getStyler().setXAxisMin(0.0);
         pressureChart.getStyler().setToolTipsEnabled(true);
+        pressureChart.getStyler().setZoomEnabled(true);
         //Graph 3: Temperatures
         temperatureChart = QuickChart.getChart("Temperature Sensors", "Time (s)", "Temp (°C)", "T1", xData, t1Data);
         temperatureChart.addSeries("T2", xData, t2Data);
@@ -135,32 +138,41 @@ public class DashboardView extends JFrame implements SensorObserver {
         temperatureChart.getStyler().setLegendVisible(true);
         temperatureChart.getStyler().setXAxisMin(0.0);
         temperatureChart.getStyler().setToolTipsEnabled(true);
+        temperatureChart.getStyler().setZoomEnabled(true);
 
         //Wrap charts in panels
         flowPanel = new XChartPanel<>(flowChart);
         pressurePanel = new XChartPanel<>(pressureChart);
         temperaturePanel = new XChartPanel<>(temperatureChart);
 
-        //CHART VIEW SWITCHING LOGIC
+        //RUN AND CHART VIEW SWITCHING LOGIC
         //Card panel (holds 3 graphs on top of each other)
         cardLayout = new CardLayout();
         cardPanel = new JPanel(cardLayout);
         cardPanel.add(flowPanel, "Airflow Calculations");
         cardPanel.add(pressurePanel, "Pressure Sensors");
         cardPanel.add(temperaturePanel, "Temperature Sensors");
-        //Selector Dropdown
+        //Run selector dropdown
+        runSelector = new JComboBox<>();
+        runSelector.addItem("No Runs Recorded");
+        runSelector.setFont(new Font("Arial", Font.BOLD, 14));
+        runSelector.addActionListener(_ -> updateDisplayRun());
+        //Graph selector dropdown
         String[] options = {"Airflow Calculations", "Pressure Sensors", "Temperature Sensors"};
         graphSelector = new JComboBox<>(options);
         graphSelector.setFont(new Font("Arial", Font.BOLD, 14));
-        graphSelector.addActionListener(e -> {
+        graphSelector.addActionListener(_ -> {
             String selected = (String) graphSelector.getSelectedItem();
             cardLayout.show(cardPanel, selected);
         });
-        //Container for selector + graph
+        //Container for selectors + graph
         JPanel centerContainer = new JPanel(new BorderLayout());
-        //Small header panel for the dropdown
+        //Small header panel for the dropdowns
         JPanel selectorHeader = new JPanel(new FlowLayout(FlowLayout.CENTER));
         selectorHeader.setBackground(Color.lightGray);
+        selectorHeader.add(new JLabel("Select Run:"));
+        selectorHeader.add(runSelector);
+        selectorHeader.add(Box.createHorizontalStrut(20));
         selectorHeader.add(new JLabel("Select Graph View: "));
         selectorHeader.add(graphSelector);
         centerContainer.add(selectorHeader, BorderLayout.NORTH);
@@ -201,6 +213,55 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
+     * Switches graphs to selected run and refreshes data.
+     */
+    public void updateDisplayRun() {
+        int index = runSelector.getSelectedIndex();
+        String selectedItem =  (String) runSelector.getSelectedItem();
+
+        //If index is -1 (cleared), do nothing
+        if (index == -1 || selectedItem == null || selectedItem.equals("No Runs Recorded")) return;
+
+        //SessionRuns is 0-indexed
+        if (index < sessionRuns.size()) {
+            RunSnapshot snap = sessionRuns.get(index);
+            refreshChartsWithData(snap.time, snap.p1, snap.p2, snap.p3, snap.t1, snap.t2, snap.t3, snap.flow, snap.flowOrifice);
+        }
+    }
+
+    /**
+     * Helper method to push specific data lists to the charts
+     * @param x The list of timestamps
+     * @param p1 The list of recorded P1 sensor readings
+     * @param p2 The list of recorded P2 sensor readings
+     * @param p3 The list of recorded P3 sensor readings
+     * @param t1 The list of recorded T1 sensor readings
+     * @param t2 The list of recorded T2 sensor readings
+     * @param t3 The list of recorded T3 sensor readings
+     * @param cfm28 The list of recorded CFM at 28 in H20 calculations
+     * @param cfmO The list of recorded CFM at orifice calculations
+     */
+    public void refreshChartsWithData(List<Double> x,
+                                      List<Double> p1, List<Double> p2, List<Double> p3,
+                                      List<Double> t1, List<Double> t2, List<Double> t3,
+                                      List<Double> cfm28, List<Double> cfmO) {
+        temperatureChart.updateXYSeries("T1", x, t1, null);
+        temperatureChart.updateXYSeries("T2", x, t2, null);
+        temperatureChart.updateXYSeries("T3", x, t3, null);
+
+        pressureChart.updateXYSeries("P1", x, p1, null);
+        pressureChart.updateXYSeries("P2", x, p2, null);
+        pressureChart.updateXYSeries("P3", x, p3, null);
+
+        flowChart.updateXYSeries("CFM @ 28", x, cfm28, null);
+        flowChart.updateXYSeries("CFM @ Orifice", x, cfmO, null);
+
+        flowPanel.repaint();
+        pressurePanel.repaint();
+        temperaturePanel.repaint();
+    }
+
+    /**
      * Helper method for creating the complex layout for the inputs and status.
      * @return The complete control panel layout
      */
@@ -232,11 +293,12 @@ public class DashboardView extends JFrame implements SensorObserver {
         //Orifice diameter
         JPanel orificePanel = new JPanel(new BorderLayout());
         orificePanel.setBorder(new TitledBorder("Orifice Diameter:"));
-        orificeInput = new JComboBox<String>(new String[]{"1.00", "1.50", "2.125"});
+        orificeInput = new JComboBox<>(new String[]{"1.00", "1.50", "2.125"});
         orificeInput.setEditable(false);
-        orificeInput.addActionListener(e -> {
+        orificeInput.addActionListener(_ -> {
             try {
                 String selected = (String) orificeInput.getSelectedItem();
+                assert selected != null;
                 currentOrificeDiameter = Double.parseDouble(selected);
             }
             catch (Exception ex) { ex.printStackTrace(); }
@@ -290,7 +352,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         stopButton = new JButton("Stop");
         stopButton.setBackground(Color.RED);
         stopButton.setForeground(Color.WHITE);
-        stopButton.addActionListener(_ -> stopLogging());
+        stopButton.addActionListener(_ -> stopLogging(true));
         c.gridx = 1; c.gridy = 4; c.gridwidth = 1; panel.add(stopButton, c);
 
         //Export to CSV button
@@ -321,6 +383,10 @@ public class DashboardView extends JFrame implements SensorObserver {
         return panel;
     }
 
+    /**
+     * Helper method for creating the complex layout of the activity log
+     * @return The complete activity log layout
+     */
     private JPanel createLogPanel() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(new EmptyBorder(10, 10, 10, 10)); //Padding
@@ -413,29 +479,42 @@ public class DashboardView extends JFrame implements SensorObserver {
      * Method to reset UI upon completion of logging data.
      * Triggers graph generation upon logging completion.
      * Save current session data.
+     * @param manualStop True if the user pressed the STOP button. False if timer finished
      */
-    private void stopLogging() {
+    private void stopLogging(boolean manualStop) {
         if (!isLogging) return; //Prevent double saving
 
+        //Record actual duration of run
+        double actualDuration = (System.currentTimeMillis() - startTime) / 1000.0;
+
+        //Update UI
         isLogging = false;
         toggleInputs(true);
         testStatusLabel.setText("Status: STOPPED. Data Saved");
         testStatusLabel.setBackground(new Color(220, 220, 240));
 
-        //Render the graphs upon completion
-        renderCharts();
+        //Generate graphs for the run that just finished
+        refreshChartsWithData(xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData);
 
         //Clean comment for CSV
         String safeComment = commentsArea.getText().replace("\n", " ").replace(",", ";").trim();
 
-        //Create a snapshot of the current run
+        //Create a snapshot of the current run and add to session history
         RunSnapshot run = new RunSnapshot(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData, safeComment);
-
-        //Add to session history
         sessionRuns.add(run);
 
-        //Log action
-        logMessage("Run #" + sessionRuns.size() + " completed and saved to memory.");
+        //If this is the first run, remove the "No Runs Recorded" placeholder
+        if (runSelector.getItemAt(0).equals("No Runs Recorded")) runSelector.removeAllItems();
+
+        //Add the finished run to the run selector
+        runSelector.addItem("Run #" + sessionRuns.size());
+
+        //Select the current run automatically for the user to see
+        runSelector.setSelectedIndex(runSelector.getItemCount() - 1);
+
+        //Log action depending on if the run was interrupted or not
+        if (manualStop) logMessage("Run #" + sessionRuns.size() + " STOPPED by user after " + String.format("%.1f", actualDuration) + "s.");
+        else logMessage("Run #" + sessionRuns.size() + " COMPLETED (" + targetDuration + "s).");
         logMessage("Total Runs Pending Export: " + sessionRuns.size());
 
         //Update status to show how many runs are pending export
@@ -453,6 +532,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         valveLiftInput.setEnabled(enabled);
         orificeInput.setEnabled(enabled);
         durationInput.setEnabled(enabled);
+        runSelector.setEnabled(enabled);
     }
 
     /**
@@ -537,38 +617,16 @@ public class DashboardView extends JFrame implements SensorObserver {
                 JOptionPane.showMessageDialog(this, "Export Successful!\nSession cleared.");
                 logMessage("Exported " + sessionRuns.size() + " runs to: " + file.getName());
 
-                //Clear session memory
+                //Clear session memory and reset run dropdown
                 sessionRuns.clear();
+                runSelector.removeAllItems();
+                runSelector.addItem("No Runs Recorded");
                 logMessage("Memory cleared. Ready for new session.");
             }
             catch (IOException e) {
                 JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage());
             }
         }
-    }
-
-    /**
-     * Updates the charts with the full history of the run.
-     */
-    private void renderCharts() {
-        //Update temperatures chart
-        temperatureChart.updateXYSeries("T1", xData, t1Data, null);
-        temperatureChart.updateXYSeries("T2", xData, t2Data, null);
-        temperatureChart.updateXYSeries("T3", xData, t3Data, null);
-
-        //Update pressure chart
-        pressureChart.updateXYSeries("P1", xData, p1Data, null);
-        pressureChart.updateXYSeries("P2", xData, p2Data, null);
-        pressureChart.updateXYSeries("P3", xData, p3Data, null);
-
-        //Update airflow chart
-        flowChart.updateXYSeries("CFM @ 28", xData, cfm28Data, null);
-        flowChart.updateXYSeries("CFM @ Orifice", xData, cfmOrificeData, null);
-
-        //Repaint all graphs
-        flowPanel.repaint();
-        pressurePanel.repaint();
-        temperaturePanel.repaint();
     }
 
     /**
@@ -620,8 +678,12 @@ public class DashboardView extends JFrame implements SensorObserver {
                     long now  = System.currentTimeMillis();
                     double elapsed = (now - startTime) / 1000.0;
 
+                    //Record countdown logic
+                    testStatusLabel.setText(String.format("Remaining time: %.1f seconds", Math.max(0, targetDuration - elapsed)));
+
+                    //If the timer ran out without any interrupts, communicate that in the activity log
                     if (elapsed >= targetDuration) {
-                        stopLogging();
+                        stopLogging(false);
                         return;
                     }
 
