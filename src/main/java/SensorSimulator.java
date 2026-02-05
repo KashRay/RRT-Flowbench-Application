@@ -6,7 +6,7 @@
  * @author Rayyan Kashif
  * @version 1.0
  */
-public class SensorApp {
+public class SensorSimulator {
     public static void main(String[] args) {
         //Create the Model
         ArduinoModel model = new ArduinoModel();
