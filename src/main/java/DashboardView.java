@@ -35,33 +35,33 @@ public class DashboardView extends JFrame implements SensorObserver {
     public static double INCHES_TO_METERS = 0.0254;
 
     //Chart Components
-    private final XYChart flowChart;
-    private final XYChart pressureChart;
-    private final XYChart temperatureChart;
-    private final XChartPanel<XYChart> flowPanel;
-    private final XChartPanel<XYChart> pressurePanel;
-    private final XChartPanel<XYChart> temperaturePanel;
+    private XYChart flowChart;
+    private XYChart pressureChart;
+    private XYChart temperatureChart;
+    private XChartPanel<XYChart> flowPanel;
+    private XChartPanel<XYChart> pressurePanel;
+    private XChartPanel<XYChart> temperaturePanel;
 
     //View Switching Components
-    private final JComboBox<String> runSelector;
-    private final JComboBox<String> graphSelector;
-    private final JPanel cardPanel;
-    private final CardLayout cardLayout;
+    private JComboBox<String> runSelector;
+    private JComboBox<String> graphSelector;
+    private JPanel cardPanel;
+    private CardLayout cardLayout;
 
     //DATA HISTORY LINKS
     //X-axis (time) shared by each graph
-    private final List<Double> xData;
+    private List<Double> xData;
     //Graph 1: Airflow
-    private final List<Double> cfm28Data;
-    private final List<Double> cfmOrificeData;
+    private List<Double> cfm28Data;
+    private List<Double> cfmOrificeData;
     //Graph 2: Pressures
-    private final List<Double> p1Data;
-    private final List<Double> p2Data;
-    private final List<Double> p3Data;
+    private List<Double> p1Data;
+    private List<Double> p2Data;
+    private List<Double> p3Data;
     //Graph 3: Temperatures
-    private final List<Double> t1Data;
-    private final List<Double> t2Data;
-    private final List<Double> t3Data;
+    private List<Double> t1Data;
+    private List<Double> t2Data;
+    private List<Double> t3Data;
     //Temporary buffers to hold values until the "commit" tick
     private double currentT1, currentT2, currentT3;
     private double currentP1, currentP2, currentP3;
@@ -102,6 +102,22 @@ public class DashboardView extends JFrame implements SensorObserver {
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         this.setLayout(new BorderLayout());
 
+        //Create GUI with helper methods
+        initializeData();
+        initializeCharts();
+        setupLayout();
+        this.setVisible(true);
+
+        //Send initial startup log message
+        logMessage("System Initialized. Ready for testing.");
+    }
+
+    // === INITIALIZATION HELPER METHODS
+
+    /**
+     * Helper method to initialize and add dummy points for data buffers.
+     */
+    private void initializeData() {
         //Setup and initialize data lists
         xData = new ArrayList<>();
         cfm28Data = new ArrayList<>(); cfmOrificeData = new ArrayList<>();
@@ -114,8 +130,12 @@ public class DashboardView extends JFrame implements SensorObserver {
         p1Data.add(0.0); p2Data.add(0.0); p3Data.add(0.0);
         t1Data.add(0.0); t2Data.add(0.0); t3Data.add(0.0);
         currentOrificeDiameter = 1.00;
+    }
 
-        //CHART CREATION
+    /**
+     * Helper method to initialize, stylize, and wrap all 3 graphs.
+     */
+    private void initializeCharts() {
         //Graph 1: Airflow
         flowChart = QuickChart.getChart("Airflow Calculations", "Time (s)", "CFM", "CFM @ 28", xData, cfm28Data);
         flowChart.addSeries("CFM @ Orifice", xData, cfmOrificeData);
@@ -123,6 +143,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         flowChart.getStyler().setXAxisMin(0.0);
         flowChart.getStyler().setToolTipsEnabled(true);
         flowChart.getStyler().setZoomEnabled(true);
+
         //Graph 2: Pressures
         pressureChart = QuickChart.getChart("Pressure Sensors", "Time (s)", "Pressure (hPa)", "P1", xData, p1Data);
         pressureChart.addSeries("P2", xData, p2Data);
@@ -131,6 +152,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         pressureChart.getStyler().setXAxisMin(0.0);
         pressureChart.getStyler().setToolTipsEnabled(true);
         pressureChart.getStyler().setZoomEnabled(true);
+
         //Graph 3: Temperatures
         temperatureChart = QuickChart.getChart("Temperature Sensors", "Time (s)", "Temp (°C)", "T1", xData, t1Data);
         temperatureChart.addSeries("T2", xData, t2Data);
@@ -144,59 +166,221 @@ public class DashboardView extends JFrame implements SensorObserver {
         flowPanel = new XChartPanel<>(flowChart);
         pressurePanel = new XChartPanel<>(pressureChart);
         temperaturePanel = new XChartPanel<>(temperatureChart);
+    }
 
-        //RUN AND CHART VIEW SWITCHING LOGIC
-        //Card panel (holds 3 graphs on top of each other)
+    /**
+     * Helper method to set up GUI layout.
+     */
+    private void setupLayout() {
+        //Set up center graph card panel (holds 3 graphs on top of each other)
         cardLayout = new CardLayout();
         cardPanel = new JPanel(cardLayout);
         cardPanel.add(flowPanel, "Airflow Calculations");
         cardPanel.add(pressurePanel, "Pressure Sensors");
         cardPanel.add(temperaturePanel, "Temperature Sensors");
-        //Run selector dropdown
+        JPanel selectorHeader = createSelectorHeader();
+        JPanel centerContainer = new JPanel(new BorderLayout());
+        centerContainer.add(selectorHeader, BorderLayout.NORTH);
+        centerContainer.add(cardPanel, BorderLayout.CENTER);
+
+        //Set up top controls and activity log area
+        JPanel topContainer = new JPanel(new BorderLayout());
+        topContainer.add(createControlPanel(), BorderLayout.WEST);
+        topContainer.add(createLogPanel(), BorderLayout.CENTER);
+
+        //Add containers to frame
+        this.add(topContainer, BorderLayout.NORTH);
+        this.add(centerContainer, BorderLayout.CENTER);
+    }
+
+    /**
+     * Helper method to create the graph container header.
+     * @return A header with a run selector and a graph selector
+     */
+    private JPanel createSelectorHeader() {
+        JPanel header = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        header.setBackground(Color.lightGray);
+
+        //Create run selector dropdown menu
         runSelector = new JComboBox<>();
         runSelector.addItem("No Runs Recorded");
         runSelector.setFont(new Font("Arial", Font.BOLD, 14));
         runSelector.addActionListener(_ -> updateDisplayRun());
-        //Graph selector dropdown
-        String[] options = {"Airflow Calculations", "Pressure Sensors", "Temperature Sensors"};
-        graphSelector = new JComboBox<>(options);
+
+        //Create graph selector dropdown menu
+        graphSelector = new JComboBox<>(new String[]{"Airflow Calculations", "Pressure Sensors", "Temperature Sensors"});
         graphSelector.setFont(new Font("Arial", Font.BOLD, 14));
-        graphSelector.addActionListener(_ -> {
-            String selected = (String) graphSelector.getSelectedItem();
-            cardLayout.show(cardPanel, selected);
-        });
-        //Container for selectors + graph
-        JPanel centerContainer = new JPanel(new BorderLayout());
-        //Small header panel for the dropdowns
-        JPanel selectorHeader = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        selectorHeader.setBackground(Color.lightGray);
-        selectorHeader.add(new JLabel("Select Run:"));
-        selectorHeader.add(runSelector);
-        selectorHeader.add(Box.createHorizontalStrut(20));
-        selectorHeader.add(new JLabel("Select Graph View: "));
-        selectorHeader.add(graphSelector);
-        centerContainer.add(selectorHeader, BorderLayout.NORTH);
-        centerContainer.add(cardPanel, BorderLayout.CENTER);
+        graphSelector.addActionListener(_ -> cardLayout.show(cardPanel, (String) graphSelector.getSelectedItem()));
 
-        //TOP CONTAINER
-        JPanel topContainer = new JPanel(new BorderLayout());
-        //Create control panel
-        JPanel controlPanel = createControlPanel();
-        //Create log panel
-        JPanel logPanel = createLogPanel();
-
-        //Add to window
-        topContainer.add(controlPanel, BorderLayout.WEST); //Controls on top left
-        topContainer.add(logPanel, BorderLayout.CENTER); //Activity log in the center
-        this.add(topContainer, BorderLayout.NORTH); //Control and log container on top
-        this.add(centerContainer, BorderLayout.CENTER); //Swappable graphs below
-
-        this.setVisible(true);
-
-        //Send initial startup log message
-        logMessage("System Initialized. Ready for testing.");
+        //Finalize selection header creation
+        header.add(new JLabel("Select Run:"));
+        header.add(runSelector);
+        header.add(Box.createHorizontalStrut(20));
+        header.add(new JLabel("Select Graph View: "));
+        header.add(graphSelector);
+        return header;
     }
 
+    /**
+     * Helper method for creating the complex layout for the inputs and status.
+     * @return The complete control panel layout
+     */
+    private JPanel createControlPanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10)); //Padding
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(5, 5, 5, 5); //Spacing between components
+        c.fill = GridBagConstraints.BOTH;
+
+        //Calculated results (light orange boxes)
+        cfm28Label = createStyledLabel("CFM at 28 in H20:", new Color(255, 200, 150));
+        c.gridx = 0; c.gridy = 0; c.gridwidth = 1; panel.add(cfm28Label, c);
+        cfmOrificeLabel = createStyledLabel("CFM at Orifice:", new Color(255, 200, 150));
+        c.gridx = 1; c.gridy = 0; c.gridwidth = 1; panel.add(cfmOrificeLabel, c);
+        massFlowRateLabel = createStyledLabel("Mass Flow Rate:", new Color(255, 200, 150));
+        c.gridx = 2; c.gridy = 0; c.gridwidth = 1; panel.add(massFlowRateLabel, c);
+
+        //ROW 1: Inputs and Duration
+        //Valve lift
+        valveLiftInput = new  JTextField("0.5");
+        c.gridx = 0; c.gridy = 1; c.gridwidth = 1; panel.add(createInputSubPanel("Valve Lift:", valveLiftInput), c);
+        //Orifice diameter
+        orificeInput = new JComboBox<>(new String[]{"1.00", "1.50", "2.125"});
+        orificeInput.setEditable(false);
+        orificeInput.addActionListener(_ -> {
+            try {
+                String selected = (String) orificeInput.getSelectedItem();
+                assert selected != null;
+                currentOrificeDiameter = Double.parseDouble(selected);
+            }
+            catch (Exception ex) { ex.printStackTrace(); }
+        });
+        c.gridx = 1; c.gridy = 1; panel.add(createInputSubPanel("Orifice Diameter (\"):", orificeInput), c);
+        //Testing duration
+        durationInput = new  JTextField("10");
+        c.gridx = 2; c.gridy = 1; panel.add(createInputSubPanel("Testing Duration (s):", durationInput), c);
+
+        //ROW 2: Instructions and Comments
+        //Instructions label
+        JLabel instructionsLabel = new JLabel("<html><center>Instructions:<br>Enter initial values and then hit RUN.<br>Hit STOP to suspend LOGGING.<br>Hit EXPORT CSV to export pending runs.</center></html>");
+        instructionsLabel.setOpaque(true);
+        instructionsLabel.setBackground(new Color(220, 220, 240)); //Light purple
+        instructionsLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        instructionsLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        c.gridx = 0; c.gridy = 2; c.gridheight = 1; panel.add(instructionsLabel, c);
+
+        //Comments area
+        commentsArea = new JTextArea(5, 20);
+        commentsArea.setBorder(BorderFactory.createTitledBorder("Comments About Previous Trial:"));
+        commentsArea.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { updateLastRunComment(); }
+            public void removeUpdate(DocumentEvent e) { updateLastRunComment(); }
+            public void changedUpdate(DocumentEvent e) { updateLastRunComment(); }
+        });
+        c.gridx = 1; c.gridy = 2; c.gridwidth = 2; c.gridheight = 2; panel.add(new JScrollPane(commentsArea), c); //Spans 2 columns and rows
+
+        //ROW 3: Test Status
+        testStatusLabel = new JLabel("Status: STOPPED");
+        testStatusLabel.setOpaque(true);
+        testStatusLabel.setBackground(new Color(220, 220, 240));
+        testStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        testStatusLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        c.gridx = 0; c.gridy = 3; c.gridwidth = 1; c.gridheight = 1; panel.add(testStatusLabel, c);
+
+        //ROW 4: Buttons
+        //Run test button
+        runButton = new JButton("Run");
+        runButton.setBackground(Color.GREEN);
+        runButton.addActionListener(_ -> startLogging());
+        c.gridx = 0; c.gridy = 4; c.gridwidth = 1; panel.add(runButton, c);
+
+        //Stop test button
+        stopButton = new JButton("Stop");
+        stopButton.setBackground(Color.RED);
+        stopButton.setForeground(Color.WHITE);
+        stopButton.addActionListener(_ -> stopLogging(true));
+        c.gridx = 1; c.gridy = 4; c.gridwidth = 1; panel.add(stopButton, c);
+
+        //Export to CSV button
+        exportButton = new JButton("Export CSV");
+        exportButton.setBackground(Color.YELLOW);
+        exportButton.addActionListener(_ -> exportToCSV());
+        c.gridx = 2; c.gridy = 4; c.gridwidth = 1; panel.add(exportButton, c);
+
+        //RIGHT COLUMN: Sensor Status Lights
+        c.gridx = 3; c.gridy = 0; c.gridheight = 5; c.gridwidth = 1; panel.add(createSensorStatusPanel(), c);
+
+        return panel;
+    }
+
+    /**
+     * Helper method for repeated creation of input sub panels.
+     * @param title The title of the input panel
+     * @param component The type of input
+     * @return The complete input panel
+     */
+    private JPanel createInputSubPanel(String title, JComponent component) {
+        JPanel subPanel = new JPanel(new BorderLayout());
+        subPanel.setBorder(new TitledBorder(title));
+        subPanel.add(component);
+        return subPanel;
+    }
+
+    /**
+     * Helper method to create column of live sensor readings.
+     * @return The complete panel of sensor status labels
+     */
+    private JPanel createSensorStatusPanel() {
+        JPanel statusPanel = new JPanel(new GridLayout(6, 1, 5, 5));
+        sensorStatusLabels = new JLabel[6];
+        String[] statusNames = {
+                "Pressure Diff Sensor 1 Status:", "Pressure Diff Sensor 2 Status:", "Pressure Diff Sensor 3 Status:",
+                "Temperature Sensor 1 Status:", "Temperature Sensor 2 Status:", "Temperature Sensor 3 Status:"
+        };
+
+        for (int i = 0; i < 6; i++) {
+            sensorStatusLabels[i] = new JLabel(statusNames[i]);
+            sensorStatusLabels[i].setOpaque(true);
+            sensorStatusLabels[i].setBackground(new Color(200, 240, 200));
+            sensorStatusLabels[i].setHorizontalAlignment(SwingConstants.CENTER);
+            sensorStatusLabels[i].setBorder(BorderFactory.createLineBorder(Color.GRAY));
+            statusPanel.add(sensorStatusLabels[i]);
+        }
+        return statusPanel;
+    }
+
+    /**
+     * Helper method for creating the complex layout of the activity log
+     * @return The complete activity log layout
+     */
+    private JPanel createLogPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10)); //Padding
+
+        //Titled border
+        panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(Color.GRAY), "Session Activity Log"));
+
+        activityLog = new JTextArea();
+        activityLog.setEditable(false);
+        activityLog.setFont(new Font("Monospaced", Font.PLAIN, 12));
+
+        //Auto scroll to bottom
+        DefaultCaret caret = (DefaultCaret) activityLog.getCaret();
+        caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
+        JScrollPane scrollPane = new JScrollPane(activityLog);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+        scrollPane.setPreferredSize(new Dimension(300, 250));
+
+        panel.add(scrollPane, BorderLayout.CENTER);
+        return panel;
+    }
+
+    // === LOGIC METHODS ===
+
+    /**
+     * Helper method used to record a message on the activity log at the current timestamp.
+     * @param message The message to be recorded on the activity log
+     */
     private void logMessage(String message) {
         String timestamp = new SimpleDateFormat("HH:mm:ss").format(new Date());
         activityLog.append("[" + timestamp + "] " + message + "\n");
@@ -262,154 +446,6 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
-     * Helper method for creating the complex layout for the inputs and status.
-     * @return The complete control panel layout
-     */
-    private JPanel createControlPanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(new EmptyBorder(10, 10, 10, 10)); //Padding
-        GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(5, 5, 5, 5); //Spacing between components
-        c.fill = GridBagConstraints.BOTH;
-
-        //Calculated results (orange boxes)
-        cfm28Label = createStyledLabel("CFM at 28 in H20:", new Color(255, 200, 150)); //Light orange
-        c.gridx = 0; c.gridy = 0; c.gridwidth = 1; panel.add(cfm28Label, c);
-
-        cfmOrificeLabel = createStyledLabel("CFM at Orifice:", new Color(255, 200, 150)); //Light orange
-        c.gridx = 1; c.gridy = 0; c.gridwidth = 1; panel.add(cfmOrificeLabel, c);
-
-        massFlowRateLabel = createStyledLabel("Mass Flow Rate:", new Color(255, 200, 150)); //Light orange
-        c.gridx = 2; c.gridy = 0; c.gridwidth = 1; panel.add(massFlowRateLabel, c);
-
-        //ROW 1: Inputs and Duration
-        //Valve lift
-        JPanel valvePanel = new JPanel(new BorderLayout());
-        valvePanel.setBorder(new TitledBorder("Valve Lift:"));
-        valveLiftInput = new  JTextField("0.5");
-        valvePanel.add(valveLiftInput);
-        c.gridx = 0; c.gridy = 1; c.gridwidth = 1; panel.add(valvePanel, c);
-
-        //Orifice diameter
-        JPanel orificePanel = new JPanel(new BorderLayout());
-        orificePanel.setBorder(new TitledBorder("Orifice Diameter:"));
-        orificeInput = new JComboBox<>(new String[]{"1.00", "1.50", "2.125"});
-        orificeInput.setEditable(false);
-        orificeInput.addActionListener(_ -> {
-            try {
-                String selected = (String) orificeInput.getSelectedItem();
-                assert selected != null;
-                currentOrificeDiameter = Double.parseDouble(selected);
-            }
-            catch (Exception ex) { ex.printStackTrace(); }
-        });
-        orificePanel.add(orificeInput);
-        c.gridx = 1; c.gridy = 1; panel.add(orificePanel, c);
-
-        //Testing duration
-        JPanel durationPanel = new JPanel(new BorderLayout());
-        durationPanel.setBorder(new TitledBorder("Testing Duration (s):"));
-        durationInput = new  JTextField("10");
-        durationPanel.add(durationInput);
-        c.gridx = 2; c.gridy = 1; panel.add(durationPanel, c);
-
-        //ROW 2: Instructions and Comments
-        //Instructions label
-        JLabel instructionsLabel = new JLabel("<html><center>Instructions:<br>Enter initial values and then hit RUN.<br>Hit STOP to suspend LOGGING.<br>Hit EXPORT CSV to export pending runs.</center></html>");
-        instructionsLabel.setOpaque(true);
-        instructionsLabel.setBackground(new Color(220, 220, 240)); //Light purple
-        instructionsLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        instructionsLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-        c.gridx = 0; c.gridy = 2; c.gridheight = 1; panel.add(instructionsLabel, c);
-
-        //Comments area
-        commentsArea = new JTextArea(5, 20);
-        commentsArea.setBorder(BorderFactory.createTitledBorder("Comments About Previous Trial:"));
-        commentsArea.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { updateLastRunComment(); }
-            public void removeUpdate(DocumentEvent e) { updateLastRunComment(); }
-            public void changedUpdate(DocumentEvent e) { updateLastRunComment(); }
-        });
-        JScrollPane commentScroll = new JScrollPane(commentsArea);
-        c.gridx = 1; c.gridy = 2; c.gridwidth = 2; c.gridheight = 2; panel.add(commentScroll, c); //Spans 2 columns and rows
-
-        //ROW 3: Test Status
-        testStatusLabel = new JLabel("Status: STOPPED");
-        testStatusLabel.setOpaque(true);
-        testStatusLabel.setBackground(new Color(220, 220, 240));
-        testStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        testStatusLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-        c.gridx = 0; c.gridy = 3; c.gridwidth = 1; c.gridheight = 1; panel.add(testStatusLabel, c);
-
-        //ROW 4: Buttons
-        //Run test button
-        runButton = new JButton("Run");
-        runButton.setBackground(Color.GREEN);
-        runButton.addActionListener(_ -> startLogging());
-        c.gridx = 0; c.gridy = 4; c.gridwidth = 1; panel.add(runButton, c);
-
-        //Stop test button
-        stopButton = new JButton("Stop");
-        stopButton.setBackground(Color.RED);
-        stopButton.setForeground(Color.WHITE);
-        stopButton.addActionListener(_ -> stopLogging(true));
-        c.gridx = 1; c.gridy = 4; c.gridwidth = 1; panel.add(stopButton, c);
-
-        //Export to CSV button
-        exportButton = new JButton("Export CSV");
-        exportButton.setBackground(Color.YELLOW);
-        exportButton.addActionListener(_ -> exportToCSV());
-        c.gridx = 2; c.gridy = 4; c.gridwidth = 1; panel.add(exportButton, c);
-
-        //RIGHT COLUMN: Sensor Status
-        JPanel statusPanel = new JPanel(new GridLayout(6, 1, 5, 5));
-        sensorStatusLabels = new JLabel[6];
-        String[] statusNames = {
-                "Pressure Diff Sensor 1 Status:", "Pressure Diff Sensor 2 Status:", "Pressure Diff Sensor 3 Status:",
-                "Temperature Sensor 1 Status:", "Temperature Sensor 2 Status:", "Temperature Sensor 3 Status:"
-        };
-
-        for (int i = 0; i < 6; i++) {
-            sensorStatusLabels[i] = new JLabel(statusNames[i]);
-            sensorStatusLabels[i].setOpaque(true);
-            sensorStatusLabels[i].setBackground(new Color(200, 240, 200)); //Light green
-            sensorStatusLabels[i].setHorizontalAlignment(SwingConstants.CENTER);
-            sensorStatusLabels[i].setBorder(BorderFactory.createLineBorder(Color.GRAY));
-            statusPanel.add(sensorStatusLabels[i]);
-        }
-
-        c.gridx = 3; c.gridy = 0; c.gridheight = 5; c.gridwidth = 1; panel.add(statusPanel, c);
-
-        return panel;
-    }
-
-    /**
-     * Helper method for creating the complex layout of the activity log
-     * @return The complete activity log layout
-     */
-    private JPanel createLogPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(new EmptyBorder(10, 10, 10, 10)); //Padding
-
-        //Titled border
-        panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(Color.GRAY), "Session Activity Log"));
-
-        activityLog = new JTextArea();
-        activityLog.setEditable(false);
-        activityLog.setFont(new Font("Monospaced", Font.PLAIN, 12));
-
-        //Auto scroll to bottom
-        DefaultCaret caret = (DefaultCaret) activityLog.getCaret();
-        caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
-        JScrollPane scrollPane = new JScrollPane(activityLog);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-        scrollPane.setPreferredSize(new Dimension(300, 250));
-
-        panel.add(scrollPane, BorderLayout.CENTER);
-        return panel;
-    }
-
-    /**
      * Helper method for consistent output label creation.
      * @param text The label text
      * @param bg The label background color
@@ -431,6 +467,103 @@ public class DashboardView extends JFrame implements SensorObserver {
     private void updateLastRunComment() {
         //Update the record in memory
         if (!isLogging && !sessionRuns.isEmpty()) sessionRuns.getLast().comment = commentsArea.getText().replace("\n", " ").replace(",", ";").trim();
+    }
+
+    private void bufferSensorData(String sensorID, double value) {
+        switch (sensorID) {
+            case "T1": currentT1 = value; break;
+            case "T2": currentT2 = value; break;
+            case "T3": currentT3 = value; break;
+            case "P1": currentP1 = value; break;
+            case "P2": currentP2 = value; break;
+            case "P3": currentP3 = value; break;
+        }
+    }
+
+    /**
+     * Helper method to record all data points at the period in time.
+     * @param elapsed The timestamp of recording
+     */
+    private void recordDataPoint(double elapsed, FlowResult flowData) {
+        xData.add(elapsed);
+        t1Data.add(currentT1); t2Data.add(currentT2); t3Data.add(currentT3);
+        p1Data.add(currentP1); p2Data.add(currentP2); p3Data.add(currentP3);
+
+        //Use previously calculated values
+        cfm28Data.add(flowData.cfm28());
+        cfmOrificeData.add(flowData.cfmOrifice());
+    }
+
+    /**
+     * Helper method used to quickly toggle on/off all button functionality for trial running.
+     * @param enabled True if the buttons should be on, and false if the buttons should be off
+     */
+    private void toggleInputs(boolean enabled) {
+        runButton.setEnabled(enabled);
+        stopButton.setEnabled(!enabled);
+        exportButton.setEnabled(enabled);
+        valveLiftInput.setEnabled(enabled);
+        orificeInput.setEnabled(enabled);
+        durationInput.setEnabled(enabled);
+        runSelector.setEnabled(enabled);
+    }
+
+    /**
+     * Updates the individual sensor status lights with the current value.
+     * @param sensorID The sensor the new reading came from
+     * @param value The new sensor reading
+     */
+    private void updateStatusDisplay(String sensorID, double value) {
+        int index = -1;
+        String unit = "";
+        String sensor = "";
+
+        //Thresholds (can be adjusted through testing)
+        double tempWarning = 65.0; //Warning if over 50C
+
+        switch (sensorID) {
+            case "P1": sensor = "Pressure Diff Sensor 1 Status"; index = 0; unit = "hPa"; break;
+            case "P2": sensor = "Pressure Diff Sensor 2 Status"; index = 1; unit = "hPa"; break;
+            case "P3": sensor = "Pressure Diff Sensor 3 Status"; index = 2; unit = "hPa"; break;
+            case "T1": sensor = "Temperature Sensor 1 Status"; index = 3; unit = "°C"; break;
+            case "T2": sensor = "Temperature Sensor 2 Status"; index = 4; unit = "°C"; break;
+            case "T3": sensor = "Temperature Sensor 3 Status"; index = 5; unit = "°C"; break;
+        }
+
+        if (index != -1) {
+            sensorStatusLabels[index].setText(String.format("%s: %.1f %s", sensor, value, unit));
+
+            //Safety check logic (can be adjusted to include pressures)
+            if (sensorID.startsWith("T") && value > tempWarning) {
+                sensorStatusLabels[index].setBackground(Color.RED);
+                sensorStatusLabels[index].setForeground(Color.WHITE);
+            }
+            else {
+                sensorStatusLabels[index].setBackground(new Color(200, 240, 200)); //Reset to green
+                sensorStatusLabels[index].setForeground(Color.BLACK);
+            }
+        }
+    }
+
+    /**
+     * Helper method to update calculated labels.
+     */
+    private FlowResult performRealTimeCalculations() {
+        double rtCFMOrifice = 0.0, rtMassFlow = 0.0, rtCFM28 = 0.0;
+
+        //Only calculate if valid sensor data is present
+        if (currentP1 > 0 && currentT1 > 0) {
+            rtCFMOrifice = calculateCFMatOrifice(currentP1, currentP2, currentOrificeDiameter, currentT1);
+            rtMassFlow = calculateMassFlowRate(rtCFMOrifice, calculateRho(currentP2, currentT1));
+            rtCFM28 = calculateCFMat28inH20(rtCFMOrifice, currentP1);
+        }
+
+        //Update results labels immediately
+        cfm28Label.setText(String.format("CFM @ 28: %.2f", rtCFM28));
+        cfmOrificeLabel.setText(String.format("CFM @ Orifice: %.2f", rtCFMOrifice));
+        massFlowRateLabel.setText(String.format("Mass Flow: %.3f", rtMassFlow));
+
+        return new FlowResult(rtCFMOrifice, rtMassFlow, rtCFM28);
     }
 
     /**
@@ -522,57 +655,6 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
-     * Helper method used to quickly toggle on/off all button functionality for trial running.
-     * @param enabled True if the buttons should be on, and false if the buttons should be off
-     */
-    private void toggleInputs(boolean enabled) {
-        runButton.setEnabled(enabled);
-        stopButton.setEnabled(!enabled);
-        exportButton.setEnabled(enabled);
-        valveLiftInput.setEnabled(enabled);
-        orificeInput.setEnabled(enabled);
-        durationInput.setEnabled(enabled);
-        runSelector.setEnabled(enabled);
-    }
-
-    /**
-     * Updates the individual sensor status lights with the current value.
-     * @param sensorID The sensor the new reading came from
-     * @param value The new sensor reading
-     */
-    private void updateStatusDisplay(String sensorID, double value) {
-        int index = -1;
-        String unit = "";
-        String sensor = "";
-
-        //Thresholds (can be adjusted through testing)
-        double tempWarning = 65.0; //Warning if over 50C
-
-        switch (sensorID) {
-            case "P1": sensor = "Pressure Diff Sensor 1 Status"; index = 0; unit = "hPa"; break;
-            case "P2": sensor = "Pressure Diff Sensor 2 Status"; index = 1; unit = "hPa"; break;
-            case "P3": sensor = "Pressure Diff Sensor 3 Status"; index = 2; unit = "hPa"; break;
-            case "T1": sensor = "Temperature Sensor 1 Status"; index = 3; unit = "°C"; break;
-            case "T2": sensor = "Temperature Sensor 2 Status"; index = 4; unit = "°C"; break;
-            case "T3": sensor = "Temperature Sensor 3 Status"; index = 5; unit = "°C"; break;
-        }
-
-        if (index != -1) {
-            sensorStatusLabels[index].setText(String.format("%s: %.1f %s", sensor, value, unit));
-
-            //Safety check logic (can be adjusted to include pressures)
-            if (sensorID.startsWith("T") && value > tempWarning) {
-                sensorStatusLabels[index].setBackground(Color.RED);
-                sensorStatusLabels[index].setForeground(Color.WHITE);
-            }
-            else {
-                sensorStatusLabels[index].setBackground(new Color(200, 240, 200)); //Reset to green
-                sensorStatusLabels[index].setForeground(Color.BLACK);
-            }
-        }
-    }
-
-    /**
      * Method for exporting all recorded test runs to a CSV file.
      */
     private void exportToCSV() {
@@ -641,74 +723,45 @@ public class DashboardView extends JFrame implements SensorObserver {
         //Always run UI updates on the Swing thread
         SwingUtilities.invokeLater(() -> {
             //Buffer the incoming value into temporary variables
-            switch (sensorID) {
-                case "T1": currentT1 = value; break;
-                case "T2": currentT2 = value; break;
-                case "T3": currentT3 = value; break;
-                case "P1": currentP1 = value; break;
-                case "P2": currentP2 = value; break;
-                case "P3": currentP3 = value; break;
-            }
-
-            //Real-time status box updates
+           bufferSensorData(sensorID, value);
+            //Update status boxes in real-time
             updateStatusDisplay(sensorID, value);
+            //Update the calculated boxes in real-time
+            FlowResult results = performRealTimeCalculations();
 
-            //Calculate values immediately before running
-            double rtCFMOrifice = 0.0;
-            double rtMassFlow = 0.0;
-            double rtCFM28 = 0.0;
+            //Use the last sensor as the trigger to add full set of data to the graph, otherwise continue logging
+            if (isLogging && sensorID.equals("P3")) {
+                //Get the current time for x-axis
+                long now = System.currentTimeMillis();
+                double elapsed = (now - startTime) / 1000.0;
 
-            //Only calculate if valid sensor data is present
-            if (currentP1 > 0 && currentT1 > 0) {
-                rtCFMOrifice = calculateCFMatOrifice(currentP1, currentP2, currentOrificeDiameter, currentT1);
-                rtMassFlow = calculateMassFlowRate(rtCFMOrifice, calculateRho(currentP2, currentT1));
-                rtCFM28 = calculateCFMat28inH20(rtCFMOrifice, currentP1);
-            }
+                //Status sensor countdown logic
+                testStatusLabel.setText(String.format("Remaining time: %.1f seconds", Math.max(0, targetDuration - elapsed)));
 
-            //Update results labels immediately
-            cfm28Label.setText(String.format("CFM @ 28: %.2f", rtCFM28));
-            cfmOrificeLabel.setText(String.format("CFM @ Orifice: %.2f", rtCFMOrifice));
-            massFlowRateLabel.setText(String.format("Mass Flow: %.3f", rtMassFlow));
-
-            //Logging
-            if (isLogging) {
-                //Use the last sensor (P3) as the trigger to add full set of data to the graph
-                if (sensorID.equals("P3")) {
-                    //Get the current time for x-axis
-                    long now  = System.currentTimeMillis();
-                    double elapsed = (now - startTime) / 1000.0;
-
-                    //Record countdown logic
-                    testStatusLabel.setText(String.format("Remaining time: %.1f seconds", Math.max(0, targetDuration - elapsed)));
-
-                    //If the timer ran out without any interrupts, communicate that in the activity log
-                    if (elapsed >= targetDuration) {
-                        stopLogging(false);
-                        return;
-                    }
-
-                    //Add time to the shared x-axis
-                    xData.add(elapsed);
-
-                    //Add buffered values to all y-axes
-                    t1Data.add(currentT1); t2Data.add(currentT2); t3Data.add(currentT3);
-                    p1Data.add(currentP1); p2Data.add(currentP2); p3Data.add(currentP3);
-                    cfm28Data.add(rtCFM28);
-                    cfmOrificeData.add(rtCFMOrifice);
-                }
+                //If the timer ran out without any interrupts, communicate that in the activity log
+                if (elapsed >= targetDuration) stopLogging(false);
+                else recordDataPoint(elapsed, results);
             }
         });
     }
 
+    // === MATH HELPER METHODS ===
+
     /**
      * Helper method for calculating the constant value of beta.
-     * @param currentOrificeDiameter The orifice value in inches
+     * @param currentOrificeDiameter The currently selected orifice value in inches
      * @return The calculated beta value
      */
     private double calculateBeta(double currentOrificeDiameter) {
         return currentOrificeDiameter/D;
     }
 
+    /**
+     * Helper method for calculating the value of rho.
+     * @param currentP2 The second pressure sensor reading
+     * @param currentT1 The first temperature sensor reading
+     * @return The current calculated value of rho
+     */
     private double calculateRho(double currentP2, double currentT1) {
         double pPascal = currentP2 * 100;
         double tKelvin = currentT1 + 273.15;
@@ -719,6 +772,14 @@ public class DashboardView extends JFrame implements SensorObserver {
         return pPascal / (R * tKelvin);
     }
 
+    /**
+     * Helper method for calculating the current CFM at orifice.
+     * @param currentP1 The current reading of the first pressure sensor
+     * @param currentP2 The current reading of the second pressure sensor
+     * @param currentOrificeDiameter The currently selected orifice value in inches
+     * @param currentT1 The current reading of the first temperature sensor
+     * @return The current calculated value for the CFM at orifice
+     */
     private double calculateCFMatOrifice(double currentP1, double currentP2, double currentOrificeDiameter, double currentT1) {
         double p1Pascal = currentP1 * 100;
         double rho = calculateRho(currentP2, currentT1);
@@ -734,12 +795,24 @@ public class DashboardView extends JFrame implements SensorObserver {
         return volFlowCMS * 2118.88;
     }
 
+    /**
+     * Helper method for calculating the current mass flow rate.
+     * @param currentCFMatOrifice The current calculated CFM at orifice
+     * @param currentRho The current calculated rho value
+     * @return The current calculated value for the mass flow rate
+     */
     private double calculateMassFlowRate(double currentCFMatOrifice, double currentRho) {
         double cms = currentCFMatOrifice / 2118.88;
 
         return cms * currentRho;
     }
 
+    /**
+     * Helper method for calculating the current CFM at 28 in H20.
+     * @param currentCFMatOrifice The current calculated CFM at orifice
+     * @param currentP1 The current reading of the first pressure sensor
+     * @return The current calculated value for the CFM at 28 in H20
+     */
     private double calculateCFMat28inH20(double currentCFMatOrifice, double currentP1) {
         if (currentP1 <= 0) return 0.0;
 
