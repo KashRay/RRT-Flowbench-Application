@@ -46,7 +46,7 @@ public class SensorSimulator {
                                 if (line != null) {
                                     System.out.println(line);
                                     String[] lineParts = line.split(" ");
-                                    model.recieveReading(lineParts[0], Integer.parseInt(lineParts[1]));
+                                    model.recieveReading(lineParts[0], round(Double.parseDouble(lineParts[1])));
                                 }
                             } while (line != null);
                             Thread.sleep(100);
