@@ -38,21 +38,18 @@ public class SensorSimulator {
 
                     while (true) {
                         try {
-                            //Read from Port
-                            String line = reader.readLine();
+                            String line;
+                            do {
+                                //Read from Port
+                                line = reader.readLine();
 
-                            if (line != null) {
-                                System.out.println(line);
-
-                                // //Send data every 100ms
-                                // model.recieveReading("T1", round(t1));
-                                // model.recieveReading("T2", round(t2));
-                                // model.recieveReading("T3", round(t3));
-                                // model.recieveReading("P1", round(p1));
-                                // model.recieveReading("P2", round(p2));
-                                // model.recieveReading("P3", round(p3));
-                                Thread.sleep(100);
-                            }
+                                if (line != null) {
+                                    System.out.println(line);
+                                    String[] lineParts = line.split(" ");
+                                    model.recieveReading(lineParts[0], Integer.parseInt(lineParts[1]));
+                                }
+                            } while (line != null);
+                            Thread.sleep(100);
                         }
                         catch (Exception e) {
                             e.printStackTrace();
