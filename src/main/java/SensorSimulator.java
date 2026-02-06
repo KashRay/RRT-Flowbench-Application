@@ -3,6 +3,8 @@ import com.fazecast.jSerialComm.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
+import java.util.Arrays;
+
 /**
  * Acts as the initializer that binds the Model and View together.
  * Loops and simulates the Arduino sending data.
@@ -31,7 +33,7 @@ public class SensorSimulator {
                     0
                 );
 
-                if (!port.openPort()) { 
+                if (port.openPort()) { 
                     System.out.println("Connected to serial port");
 
                     BufferedReader reader = new BufferedReader(new InputStreamReader(port.getInputStream()));
@@ -49,14 +51,17 @@ public class SensorSimulator {
                                     model.recieveReading(lineParts[0], round(Double.parseDouble(lineParts[1])));
                                 }
                             } while (line != null);
-                            Thread.sleep(100);
                         }
                         catch (Exception e) {
                             e.printStackTrace();
                         }
                     }
                 }
-                else System.out.println("Failed to open port");
+                else {
+                    System.out.println("Failed to open port");
+                    System.out.println("Open Ports:");
+                    System.out.println(Arrays.toString(SerialPort.getCommPorts()));
+                }
             }
             catch (Exception e) {
                 e.printStackTrace();
