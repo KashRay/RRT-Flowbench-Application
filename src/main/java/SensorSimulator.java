@@ -1,3 +1,10 @@
+import com.fazecast.jSerialComm.*;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+
+import java.util.Arrays;
+
 /**
  * Acts as the initializer that binds the Model and View together.
  * Loops and simulates the Arduino sending data.
@@ -14,48 +21,49 @@ public class SensorSimulator {
         //Create the view (GUI) on the event dispatch thread (for thread safety)
         javax.swing.SwingUtilities.invokeLater(() -> new DashboardView(model));
 
-        //Simulate Arduino Input Loop
+        //Get data from arduino
         new Thread(() -> {
             try {
-                //Initial base values
-                double t1 = 24.0, t2 = 25.0, t3 = 40.0; //Celsius
-                double p1 = 0.0; //Differential pressure (starts at 0)
-                double p2 = 1013.25; //Atmospheric pressure (hPa)
-                double p3 = 0.0;
+                //Open Serial Port
+                SerialPort port = SerialPort.getCommPort("/dev/ttyACM0");
+                port.setBaudRate(9600);
+                port.setComPortTimeouts(
+                    SerialPort.TIMEOUT_READ_SEMI_BLOCKING,
+                    1000,
+                    0
+                );
 
-                boolean rampingUp = true;
+                if (port.openPort()) { 
+                    System.out.println("Connected to serial port");
 
-                while (true) {
-                    //Simulate pressure sweep (P1)
-                    if (rampingUp) {
-                        p1 += 0.5 + Math.random();
-                        if (p1 > 72.0) rampingUp = false;
-                    } else {
-                        p1 -= 0.5 + Math.random();
-                        if (p1 < 0.0) {
-                            p1 = 0.0;
-                            rampingUp = true;
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(port.getInputStream()));
+
+                    while (true) {
+                        try {
+                            String line;
+                            do {
+                                //Read from Port
+                                line = reader.readLine();
+
+                                if (line != null) {
+                                    System.out.println(line);
+                                    String[] lineParts = line.split(" ");
+                                    model.recieveReading(lineParts[0], round(Double.parseDouble(lineParts[1])));
+                                }
+                            } while (line != null);
+                        }
+                        catch (Exception e) {
+                            e.printStackTrace();
                         }
                     }
-
-                    //Simulate atmospheric fluctuation (P2)
-                    p2 = 1013.0 + (Math.random() - 0.5);
-
-                    //Simulate temperature rise (vacuum motors heating up)
-                    if (t1 < 60) t1 += 0.05 * Math.random();
-                    t2 += (Math.random() - 0.5) * 0.1;
-
-                    //Send data every 100ms
-                    model.recieveReading("T1", round(t1));
-                    model.recieveReading("T2", round(t2));
-                    model.recieveReading("T3", round(t3));
-                    model.recieveReading("P1", round(p1));
-                    model.recieveReading("P2", round(p2));
-                    model.recieveReading("P3", round(p3));
-                    Thread.sleep(100);
+                }
+                else {
+                    System.out.println("Failed to open port");
+                    System.out.println("Open Ports:");
+                    System.out.println(Arrays.toString(SerialPort.getCommPorts()));
                 }
             }
-            catch (InterruptedException e) {
+            catch (Exception e) {
                 e.printStackTrace();
             }
         }).start();
