@@ -45,12 +45,12 @@ void loop() {
   if (tempSense1 < 60) tempSense1 += 0.05 * (random(0, 100) / 100.0);
   tempSense2 += ((random(0, 100) / 100.0) - 0.5) * 0.1;
 
-  Serial.print("P1 "); Serial.println(pressureSense1);
-  Serial.print("P2 "); Serial.println(pressureSense2);
-  Serial.print("P3 "); Serial.println(pressureSense3);
   Serial.print("T1 "); Serial.println(tempSense1);
   Serial.print("T2 "); Serial.println(tempSense2);
   Serial.print("T3 "); Serial.println(tempSense3);
+  Serial.print("P1 "); Serial.println(pressureSense1);
+  Serial.print("P2 "); Serial.println(pressureSense2);
+  Serial.print("P3 "); Serial.println(pressureSense3);
 
-  delay(1000);
+  delay(100);
 }
