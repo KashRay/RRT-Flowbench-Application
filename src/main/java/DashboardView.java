@@ -28,11 +28,14 @@ import java.util.Objects;
  */
 public class DashboardView extends JFrame implements SensorObserver {
     //Constants
-    public static double C_d = 0.61;
-    public static double D = 4.0;
-    public static double EPSILON = 1;
-    public static double R = 287.1;
+    public static double DISCHARGE_COEFFICIENT = 0.61;
+    public static double PIPE_INNER_DIAMETER = 4.0;
+    public static double EXPANSIBILITY_FACTOR = 1;
+    public static double SPECIFIC_GAS_CONSTANT = 287.1;
     public static double INCHES_TO_METERS = 0.0254;
+    public static double CELSIUS_TO_KELVIN = 273.15;
+    public static double KgPerS_TO_CFM = 2118.88;
+    public static double DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa = 249.09;
 
     //Chart Components
     private XYChart flowChart;
@@ -137,8 +140,8 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void initializeCharts() {
         //Graph 1: Airflow
-        flowChart = QuickChart.getChart("Airflow Calculations", "Time (s)", "CFM", "CFM @ 28", xData, cfm28Data);
-        flowChart.addSeries("CFM @ Orifice", xData, cfmOrificeData);
+        flowChart = QuickChart.getChart("Airflow Calculations", "Time (s)", "CFM", "Flowrate at 28\" in H20", xData, cfm28Data);
+        flowChart.addSeries("Flowrate at Orifice", xData, cfmOrificeData);
         flowChart.getStyler().setLegendVisible(true);
         flowChart.getStyler().setXAxisMin(0.0);
         flowChart.getStyler().setToolTipsEnabled(true);
@@ -185,8 +188,8 @@ public class DashboardView extends JFrame implements SensorObserver {
 
         //Set up top controls and activity log area
         JPanel topContainer = new JPanel(new BorderLayout());
-        topContainer.add(createControlPanel(), BorderLayout.WEST);
-        topContainer.add(createLogPanel(), BorderLayout.CENTER);
+        topContainer.add(createControlPanel(), BorderLayout.CENTER);
+        topContainer.add(createLogPanel(), BorderLayout.EAST);
 
         //Add containers to frame
         this.add(topContainer, BorderLayout.NORTH);
@@ -232,6 +235,10 @@ public class DashboardView extends JFrame implements SensorObserver {
         c.insets = new Insets(5, 5, 5, 5); //Spacing between components
         c.fill = GridBagConstraints.BOTH;
 
+        //Allow columns to grow to fill the screen
+        c.weightx = 0.5;
+        c.weighty = 0.5;
+
         //Calculated results (light orange boxes)
         cfm28Label = createStyledLabel("CFM at 28 in H20:", new Color(255, 200, 150));
         c.gridx = 0; c.gridy = 0; c.gridwidth = 1; panel.add(cfm28Label, c);
@@ -243,9 +250,11 @@ public class DashboardView extends JFrame implements SensorObserver {
         //ROW 1: Inputs and Duration
         //Valve lift
         valveLiftInput = new  JTextField("0.5");
+        valveLiftInput.setFont(new Font("Arial", Font.PLAIN, 14));
         c.gridx = 0; c.gridy = 1; c.gridwidth = 1; panel.add(createInputSubPanel("Valve Lift:", valveLiftInput), c);
         //Orifice diameter
         orificeInput = new JComboBox<>(new String[]{"1.00", "1.50", "2.125"});
+        orificeInput.setFont(new Font("Arial", Font.PLAIN, 14));
         orificeInput.setEditable(false);
         orificeInput.addActionListener(_ -> {
             try {
@@ -258,6 +267,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         c.gridx = 1; c.gridy = 1; panel.add(createInputSubPanel("Orifice Diameter (\"):", orificeInput), c);
         //Testing duration
         durationInput = new  JTextField("10");
+        durationInput.setFont(new Font("Arial", Font.PLAIN, 14));
         c.gridx = 2; c.gridy = 1; panel.add(createInputSubPanel("Testing Duration (s):", durationInput), c);
 
         //ROW 2: Instructions and Comments
@@ -285,6 +295,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         testStatusLabel.setBackground(new Color(220, 220, 240));
         testStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
         testStatusLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        testStatusLabel.setFont(new Font("Arial", Font.BOLD, 14));
         c.gridx = 0; c.gridy = 3; c.gridwidth = 1; c.gridheight = 1; panel.add(testStatusLabel, c);
 
         //ROW 4: Buttons
@@ -308,7 +319,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         c.gridx = 2; c.gridy = 4; c.gridwidth = 1; panel.add(exportButton, c);
 
         //RIGHT COLUMN: Sensor Status Lights
-        c.gridx = 3; c.gridy = 0; c.gridheight = 5; c.gridwidth = 1; panel.add(createSensorStatusPanel(), c);
+        c.gridx = 3; c.gridy = 0; c.gridheight = 5; c.gridwidth = 1; c.weightx = 0.5; panel.add(createSensorStatusPanel(), c);
 
         return panel;
     }
@@ -334,8 +345,8 @@ public class DashboardView extends JFrame implements SensorObserver {
         JPanel statusPanel = new JPanel(new GridLayout(6, 1, 5, 5));
         sensorStatusLabels = new JLabel[6];
         String[] statusNames = {
-                "Pressure Diff Sensor 1 Status:", "Pressure Diff Sensor 2 Status:", "Pressure Diff Sensor 3 Status:",
-                "Temperature Sensor 1 Status:", "Temperature Sensor 2 Status:", "Temperature Sensor 3 Status:"
+                "Pressure Diff #1 (Orifice):", "Pressure Diff #2 (Vertical):", "Pressure Diff #3 (Bore):",
+                "Temperature #1 (Orifice):", "Temperature #2 (Vertical):", "Temperature #3 (Vacuum):"
         };
 
         for (int i = 0; i < 6; i++) {
@@ -369,7 +380,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
         JScrollPane scrollPane = new JScrollPane(activityLog);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-        scrollPane.setPreferredSize(new Dimension(300, 250));
+        scrollPane.setPreferredSize(new Dimension(280, 250));
 
         panel.add(scrollPane, BorderLayout.CENTER);
         return panel;
@@ -437,8 +448,8 @@ public class DashboardView extends JFrame implements SensorObserver {
         pressureChart.updateXYSeries("P2", x, p2, null);
         pressureChart.updateXYSeries("P3", x, p3, null);
 
-        flowChart.updateXYSeries("CFM @ 28", x, cfm28, null);
-        flowChart.updateXYSeries("CFM @ Orifice", x, cfmO, null);
+        flowChart.updateXYSeries("Flowrate at 28\" in H20", x, cfm28, null);
+        flowChart.updateXYSeries("Flowrate at Orifice", x, cfmO, null);
 
         flowPanel.repaint();
         pressurePanel.repaint();
@@ -456,7 +467,9 @@ public class DashboardView extends JFrame implements SensorObserver {
         label.setOpaque(true);
         label.setBackground(bg);
         label.setHorizontalAlignment(SwingConstants.CENTER);
-        label.setPreferredSize(new Dimension(150, 40));
+        label.setFont(new Font("Arial", Font.BOLD, 14));
+        label.setPreferredSize(new Dimension(220, 60));
+        label.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY, 1));
         return label;
     }
 
@@ -518,23 +531,23 @@ public class DashboardView extends JFrame implements SensorObserver {
         String unit = "";
         String sensor = "";
 
-        //Thresholds (can be adjusted through testing)
-        double tempWarning = 65.0; //Warning if over 50C
+        //Temperature sensor #3 threshold
+        double tempWarning = 50.0; //Warning if over 50C
 
         switch (sensorID) {
-            case "P1": sensor = "Pressure Diff Sensor 1 Status"; index = 0; unit = "hPa"; break;
-            case "P2": sensor = "Pressure Diff Sensor 2 Status"; index = 1; unit = "hPa"; break;
-            case "P3": sensor = "Pressure Diff Sensor 3 Status"; index = 2; unit = "hPa"; break;
-            case "T1": sensor = "Temperature Sensor 1 Status"; index = 3; unit = "°C"; break;
-            case "T2": sensor = "Temperature Sensor 2 Status"; index = 4; unit = "°C"; break;
-            case "T3": sensor = "Temperature Sensor 3 Status"; index = 5; unit = "°C"; break;
+            case "P1": sensor = "Pressure Diff #1 (Orifice)"; index = 0; unit = "hPa"; break;
+            case "P2": sensor = "Pressure Diff #2 (Vertical)"; index = 1; unit = "hPa"; break;
+            case "P3": sensor = "Pressure Diff #3 (Bore)"; index = 2; unit = "hPa"; break;
+            case "T1": sensor = "Temperature #1 (Orifice)"; index = 3; unit = "°C"; break;
+            case "T2": sensor = "Temperature #2 (Vertical)"; index = 4; unit = "°C"; break;
+            case "T3": sensor = "Temperature #3 (Vacuum)"; index = 5; unit = "°C"; break;
         }
 
         if (index != -1) {
             sensorStatusLabels[index].setText(String.format("%s: %.1f %s", sensor, value, unit));
 
-            //Safety check logic (can be adjusted to include pressures)
-            if (sensorID.startsWith("T") && value > tempWarning) {
+            //Safety check logic for temperature sensor 3
+            if (sensorID.equals("T3") && value > tempWarning) {
                 sensorStatusLabels[index].setBackground(Color.RED);
                 sensorStatusLabels[index].setForeground(Color.WHITE);
             }
@@ -546,24 +559,32 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
-     * Helper method to update calculated labels.
+     * Helper method to calculate physics values, update UI labels, and return the results.
+     * @return A package of calculated physics values to prevent recalculations
      */
     private FlowResult performRealTimeCalculations() {
-        double rtCFMOrifice = 0.0, rtMassFlow = 0.0, rtCFM28 = 0.0;
+        //Safety check
+        if (currentP1 <= 0 || currentP2 <= 0 || currentOrificeDiameter <= 0) return new FlowResult(0.0, 0.0, 0.0);
 
-        //Only calculate if valid sensor data is present
-        if (currentP1 > 0 && currentT1 > 0) {
-            rtCFMOrifice = calculateCFMatOrifice(currentP1, currentP2, currentOrificeDiameter, currentT1);
-            rtMassFlow = calculateMassFlowRate(rtCFMOrifice, calculateRho(currentP2, currentT1));
-            rtCFM28 = calculateCFMat28inH20(rtCFMOrifice, currentP1);
-        }
+        //Calculate fluid density (rho)
+        double rho = calculateRho(currentP2, currentT1);
 
-        //Update results labels immediately
-        cfm28Label.setText(String.format("CFM @ 28: %.2f", rtCFM28));
-        cfmOrificeLabel.setText(String.format("CFM @ Orifice: %.2f", rtCFMOrifice));
-        massFlowRateLabel.setText(String.format("Mass Flow: %.3f", rtMassFlow));
+        //Calculate mass flow rate
+        double massFlowrate = calculateMassFlowRate(currentP1, rho, currentOrificeDiameter);
 
-        return new FlowResult(rtCFMOrifice, rtMassFlow, rtCFM28);
+        //Calculate actual volumetric flow (CFM)
+        double cfmOrifice = calculateCFMatOrifice(massFlowrate, rho);
+
+        //Calculate corrected flow (CFM @ 28" in H20)
+        double cfm28 = calculateCFMat28inH20(cfmOrifice, currentP1);
+
+        //Update result labels immediately
+        cfm28Label.setText(String.format("Flowrate at 28\" in H20: %.2f CFM", cfm28));
+        cfmOrificeLabel.setText(String.format("Flowrate at Orifice: %.2f CFM", cfmOrifice));
+        massFlowRateLabel.setText(String.format("Mass Flowrate: %.4f kg/s", massFlowrate));
+
+        //Return package of calculated values
+        return new FlowResult(cfmOrifice, massFlowrate, cfm28);
     }
 
     /**
@@ -675,7 +696,7 @@ public class DashboardView extends JFrame implements SensorObserver {
 
             try (PrintWriter writer = new PrintWriter(file)) {
                 //CSV header
-                writer.println("Run_ID,Valve_Lift,Orifice_Dia,Time,P1(hPa),P2(hPa),P3(hPa),T1(C),T2(C),T3(C),CFM@28,CFM@Orifice,Comment");
+                writer.println("Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice,Comments");
 
                 //Loop through all saved runs
                 for (int i = 0; i < sessionRuns.size(); i++) {
@@ -748,74 +769,84 @@ public class DashboardView extends JFrame implements SensorObserver {
     // === MATH HELPER METHODS ===
 
     /**
-     * Helper method for calculating the constant value of beta.
-     * @param currentOrificeDiameter The currently selected orifice value in inches
-     * @return The calculated beta value
+     * Helper method for calculating the beta ratio for the orifice plate.
+     * @param dInches The current orifice diameter in inches
+     * @return The dimensionless beta ratio
      */
-    private double calculateBeta(double currentOrificeDiameter) {
-        return currentOrificeDiameter/D;
+    private double calculateBeta(double dInches) {
+        return dInches / PIPE_INNER_DIAMETER;
     }
 
     /**
-     * Helper method for calculating the value of rho.
-     * @param currentP2 The second pressure sensor reading
-     * @param currentT1 The first temperature sensor reading
-     * @return The current calculated value of rho
+     * Helper method for calculating the air density based on the current absolute pressure and temperature.
+     * @param pAbsHPa The current absolute pressure (P2) in hPa
+     * @param tempC The current temperature (T1) in C
+     * @return The current calculated air density in kg/m^3
      */
-    private double calculateRho(double currentP2, double currentT1) {
-        double pPascal = currentP2 * 100;
-        double tKelvin = currentT1 + 273.15;
+    private double calculateRho(double pAbsHPa, double tempC) {
+        //Unit conversions
+        double pAbsPa = pAbsHPa * 100;
+        double tempK = tempC + CELSIUS_TO_KELVIN;
 
         // Avoid divide by 0
-        if (tKelvin == 0) return 0;
+        if (tempK == 0) return 0;
 
-        return pPascal / (R * tKelvin);
+        //Formula: rho = p_1 / (R * T_1)
+        return pAbsPa / (SPECIFIC_GAS_CONSTANT * tempK);
     }
 
     /**
-     * Helper method for calculating the current CFM at orifice.
-     * @param currentP1 The current reading of the first pressure sensor
-     * @param currentP2 The current reading of the second pressure sensor
-     * @param currentOrificeDiameter The currently selected orifice value in inches
-     * @param currentT1 The current reading of the first temperature sensor
-     * @return The current calculated value for the CFM at orifice
+     * Helper method for calculating the current mass flow rate using the standard orifice equation.
+     * @param deltaPHPa The current differential pressure (P1) in hPa
+     * @param rho The air density in kg/m^3
+     * @param dInches The current orifice diameter in inches
+     * @return The current mass flow rate in kg/s
      */
-    private double calculateCFMatOrifice(double currentP1, double currentP2, double currentOrificeDiameter, double currentT1) {
-        double p1Pascal = currentP1 * 100;
-        double rho = calculateRho(currentP2, currentT1);
+    private double calculateMassFlowRate(double deltaPHPa, double rho, double dInches) {
+        //Unit conversions
+        double deltaPPa = deltaPHPa * 100.0;
+        double dMeters = dInches * INCHES_TO_METERS;
 
-        if (rho <= 0 || p1Pascal <= 0) return 0.0;
+        //Geometry
+        double beta = calculateBeta(dInches);
+        double area = (Math.PI / 4.0) * Math.pow(dMeters, 2.0);
 
-        double area = (Math.PI / 4.0) * Math.pow(currentOrificeDiameter * INCHES_TO_METERS, 2);
-        double beta = calculateBeta(currentOrificeDiameter);
-        double flowCoefficient = C_d / Math.sqrt(1 - Math.pow(beta, 4));
-        double massFlow = flowCoefficient * EPSILON * area * Math.sqrt(2 * rho * p1Pascal);
-        double volFlowCMS = massFlow / rho;
-
-        return volFlowCMS * 2118.88;
+        //Formula: m_dot = (Cd * E * A * sqrt(2 * rho * dP)) / sqrt(1 - beta^4)
+        double numerator = DISCHARGE_COEFFICIENT * EXPANSIBILITY_FACTOR * area * Math.sqrt(2 * rho * deltaPPa);
+        double denominator = Math.sqrt(1 - Math.pow(beta, 4));
+        return numerator / denominator;
     }
 
     /**
-     * Helper method for calculating the current mass flow rate.
-     * @param currentCFMatOrifice The current calculated CFM at orifice
-     * @param currentRho The current calculated rho value
-     * @return The current calculated value for the mass flow rate
+     * Helper method for converting the current mass flow rate to the current volumetric flow (CFM) at the measured density.
+     * @param massFlowKgPerS The current mass flow rate in kg/s
+     * @param rho The air density in kg/m^3
+     * @return The current volumetric flow in CFM
      */
-    private double calculateMassFlowRate(double currentCFMatOrifice, double currentRho) {
-        double cms = currentCFMatOrifice / 2118.88;
+    private double calculateCFMatOrifice(double massFlowKgPerS, double rho) {
+        //Avoid divide by 0
+        if (rho <= 0) return 0.0;
 
-        return cms * currentRho;
+        //Unit conversions
+        double volFlowM3perS = massFlowKgPerS / rho;
+        return volFlowM3perS * KgPerS_TO_CFM;
     }
 
     /**
-     * Helper method for calculating the current CFM at 28 in H20.
-     * @param currentCFMatOrifice The current calculated CFM at orifice
-     * @param currentP1 The current reading of the first pressure sensor
-     * @return The current calculated value for the CFM at 28 in H20
+     * Helper method for correcting the actual CFM to a standard pressure drop of 28 inches of water.
+     * @param cfmActual The current actual calculated CFM
+     * @param deltaPHPa The current differential pressure (P1) in hPa
+     * @return The corrected current flow in CFM at 28" in H20
      */
-    private double calculateCFMat28inH20(double currentCFMatOrifice, double currentP1) {
-        if (currentP1 <= 0) return 0.0;
+    private double calculateCFMat28inH20(double cfmActual, double deltaPHPa) {
+        //Unit conversions
+        double targetPressurePa = 28.0 * DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa;
+        double measuredPressurePa = deltaPHPa * 100.0;
 
-        return  currentCFMatOrifice * Math.sqrt(28 * INCHES_TO_METERS/currentP1);
+        //Avoid divide by 0
+        if (measuredPressurePa <= 0) return 0.0;
+
+        //Formula: Q_28 = Q_actual * sqrt(TargetP / MeasuredP)
+        return cfmActual * Math.sqrt(targetPressurePa / measuredPressurePa);
     }
 }
