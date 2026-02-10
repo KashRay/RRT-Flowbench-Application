@@ -57,6 +57,7 @@ public class DashboardView extends JFrame implements SensorObserver {
     //Graph 1: Airflow
     private List<Double> cfm28Data;
     private List<Double> cfmOrificeData;
+    private List<Double> massFlowData;
     //Graph 2: Pressures
     private List<Double> p1Data;
     private List<Double> p2Data;
@@ -113,6 +114,9 @@ public class DashboardView extends JFrame implements SensorObserver {
 
         //Send initial startup log message
         logMessage("System Initialized. Ready for testing.");
+
+        //Lock the UI immediately until the SensorParser finds the port
+        setDeviceConnected(false);
     }
 
     // === INITIALIZATION HELPER METHODS
@@ -123,13 +127,13 @@ public class DashboardView extends JFrame implements SensorObserver {
     private void initializeData() {
         //Setup and initialize data lists
         xData = new ArrayList<>();
-        cfm28Data = new ArrayList<>(); cfmOrificeData = new ArrayList<>();
+        cfm28Data = new ArrayList<>(); cfmOrificeData = new ArrayList<>(); massFlowData = new ArrayList<>();
         p1Data = new ArrayList<>(); p2Data = new ArrayList<>(); p3Data = new ArrayList<>();
         t1Data = new ArrayList<>(); t2Data = new ArrayList<>(); t3Data = new ArrayList<>();
 
         //Add dummy data only for startup
         xData.add(0.0);
-        cfm28Data.add(0.0); cfmOrificeData.add(0.0);
+        cfm28Data.add(0.0); cfmOrificeData.add(0.0); massFlowData.add(0.0);
         p1Data.add(0.0); p2Data.add(0.0); p3Data.add(0.0);
         t1Data.add(0.0); t2Data.add(0.0); t3Data.add(0.0);
         currentOrificeDiameter = 1.00;
@@ -392,9 +396,43 @@ public class DashboardView extends JFrame implements SensorObserver {
      * Helper method used to record a message on the activity log at the current timestamp.
      * @param message The message to be recorded on the activity log
      */
-    private void logMessage(String message) {
+    public void logMessage(String message) {
         String timestamp = new SimpleDateFormat("HH:mm:ss").format(new Date());
         activityLog.append("[" + timestamp + "] " + message + "\n");
+    }
+
+    /**
+     * Controls the UI state based on whether the Arduino is connected.
+     * Blocks the buttons if disconnected.
+     * @param connected True if connected, false if not connected
+     */
+    public void setDeviceConnected(boolean connected) {
+        //If connection is lost while logging, force a stop immediately to save data
+        if (!connected && isLogging) {
+            logMessage("WARNING! Device disconnected. Stopping run...");
+            stopLogging(true); //Treat as a manual stop to save the partial data
+        }
+
+        //Toggle buttons
+        runButton.setEnabled(connected);
+        stopButton.setEnabled(false); //Always disabled until a run actually starts
+
+        //Toggle inputs
+        valveLiftInput.setEnabled(connected);
+        orificeInput.setEnabled(connected);
+        durationInput.setEnabled(connected);
+        runSelector.setEnabled(connected);
+
+        //Update status label
+        if (connected) {
+            testStatusLabel.setText("Status: DEVICE READY");
+            testStatusLabel.setBackground(Color.GREEN);
+            logMessage("Connection established. Controls enabled.");
+        } else {
+            testStatusLabel.setText("Status: WAITING FOR DEVICE...");
+            testStatusLabel.setBackground(Color.ORANGE);
+            logMessage("Waiting for Arduino connection...");
+        }
     }
 
     /**
@@ -402,7 +440,7 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void resetDataLists() {
         xData.clear();
-        cfm28Data.clear(); cfmOrificeData.clear();
+        cfm28Data.clear(); cfmOrificeData.clear(); massFlowData.clear();
         p1Data.clear(); p2Data.clear(); p3Data.clear();
         t1Data.clear(); t2Data.clear(); t3Data.clear();
     }
@@ -420,7 +458,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         //SessionRuns is 0-indexed
         if (index < sessionRuns.size()) {
             RunSnapshot snap = sessionRuns.get(index);
-            refreshChartsWithData(snap.time, snap.p1, snap.p2, snap.p3, snap.t1, snap.t2, snap.t3, snap.flow, snap.flowOrifice);
+            refreshChartsWithData(snap.time, snap.p1, snap.p2, snap.p3, snap.t1, snap.t2, snap.t3, snap.cfmIn28OfH20, snap.cfmAtOrifice);
         }
     }
 
@@ -503,8 +541,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         p1Data.add(currentP1); p2Data.add(currentP2); p3Data.add(currentP3);
 
         //Use previously calculated values
-        cfm28Data.add(flowData.cfm28());
-        cfmOrificeData.add(flowData.cfmOrifice());
+        cfm28Data.add(flowData.cfm28()); cfmOrificeData.add(flowData.cfmOrifice()); massFlowData.add(flowData.massFlow());
     }
 
     /**
@@ -654,7 +691,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         String safeComment = commentsArea.getText().replace("\n", " ").replace(",", ";").trim();
 
         //Create a snapshot of the current run and add to session history
-        RunSnapshot run = new RunSnapshot(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData, safeComment);
+        RunSnapshot run = new RunSnapshot(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData, massFlowData, safeComment);
         sessionRuns.add(run);
 
         //If this is the first run, remove the "No Runs Recorded" placeholder
@@ -696,7 +733,7 @@ public class DashboardView extends JFrame implements SensorObserver {
 
             try (PrintWriter writer = new PrintWriter(file)) {
                 //CSV header
-                writer.println("Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice,Comments");
+                writer.println("Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice,Mass Flowrate (kg/s),Comments");
 
                 //Loop through all saved runs
                 for (int i = 0; i < sessionRuns.size(); i++) {
@@ -705,26 +742,20 @@ public class DashboardView extends JFrame implements SensorObserver {
 
                     //Loop through data points in this run
                     for (int j = 0; j < run.time.size(); j++) {
-                        writer.printf("%d,%s,%s,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%s%n",
+                        writer.printf("%d,%s,%s,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%.5f,%s%n",
                                 runID,
                                 run.valveLift,
                                 run.orificeDiameter,
                                 run.time.get(j),
                                 run.p1.get(j), run.p2.get(j), run.p3.get(j),
                                 run.t1.get(j), run.t2.get(j), run.t3.get(j),
-                                run.flow.get(j), run.flowOrifice.get(j),
+                                run.cfmIn28OfH20.get(j), run.cfmAtOrifice.get(j), run.massFlowrate.get(j),
                                 (j == 0) ? run.comment : ""
                         );
                     }
                 }
                 JOptionPane.showMessageDialog(this, "Export Successful!\nSession cleared.");
                 logMessage("Exported " + sessionRuns.size() + " runs to: " + file.getName());
-
-                //Clear session memory and reset run dropdown
-                sessionRuns.clear();
-                runSelector.removeAllItems();
-                runSelector.addItem("No Runs Recorded");
-                logMessage("Memory cleared. Ready for new session.");
             }
             catch (IOException e) {
                 JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage());

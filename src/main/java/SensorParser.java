@@ -1,12 +1,12 @@
 import com.fazecast.jSerialComm.*;
 
+import javax.swing.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
-import java.util.Arrays;
-
 /**
  * Acts as the initializer that binds the Model and View together.
+ * Continuously scans for if the Arduino USB is connected.
  * Reads data from the appropriate USB port and parses the data.
  *
  * @author Rayyan Kashif
@@ -14,84 +14,140 @@ import java.util.Arrays;
  * @version 1.0
  */
 public class SensorParser {
+    private static DashboardView dashboard;
+
     public static void main(String[] args) {
-        //Create the Model
+        //Create the model
         ArduinoModel model = new ArduinoModel();
 
-        //Create the view (GUI) on the event dispatch thread (for thread safety)
-        javax.swing.SwingUtilities.invokeLater(() -> new DashboardView(model));
+        //Create the view (ensure it's ready before we start scanning)
+        try {
+            SwingUtilities.invokeAndWait(() -> dashboard = new DashboardView(model));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
-        //Start data acquisition thread
-        new Thread(() -> {
-            SerialPort connectedPort = null;
+        //Start the connection manager thread
+        new Thread(() -> runConnectionLoop(model)).start();
+    }
 
-            //Define potential USB ports (Linux, Windows)
-            String[] potentialPorts = {"/dev/ttyACM0", "COM7"};
+    /**
+     * The main loop that handles connecting, reading, and reconnecting.
+     * @param model The simulated Arduino model
+     */
+    public static void runConnectionLoop(ArduinoModel model) {
+        //Define potential USB ports
+        String[] potentialPorts = {"/dev/ttyACM0", "COM7"}; //Linux, Windows
+        SerialPort connectedPort = null;
 
-            //Iterate and try to connect
-            for (String portName : potentialPorts) {
-                SerialPort port = SerialPort.getCommPort(portName);
-                port.setBaudRate(115200);
-                port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 1000, 0);
+        //Permanent loop to keep the app alive forever
+        while (true) {
+            //Searching for the Arduino
+            dashboard.logMessage("Scanning for Arduino (" + String.join(", ", potentialPorts) + ")...");
 
-                //If the port is found, stop looking
-                if (port.openPort()) {
-                    connectedPort = port;
-                    System.out.println("Successfully connected to serial port: " + portName);
-                    break;
-                }
-            }
+            while (connectedPort == null) {
+                //Iterate and try to connect
+                for (String portName : potentialPorts) {
+                    try {
+                        SerialPort port = SerialPort.getCommPort(portName);
+                        port.setBaudRate(115200);
+                        port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 1000, 0);
 
-            if (connectedPort != null) {
-                try {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(connectedPort.getInputStream()));
+                        //If the port is found, stop looking
+                        if (port.openPort()) {
+                            connectedPort = port;
+                            dashboard.logMessage("Successfully connected to serial port: " + portName);
 
-                    while (true) {
-                        try {
-                            //Read from port
-                            String line = reader.readLine();
-                            if (line != null) {
-                                //Parse CSV data (format: T1,T2,T3,P1,P2,P3)
-                                String[] lineParts = line.trim().split(",");
-
-                                //Validate data structure
-                                if (lineParts.length == 6) {
-                                    try {
-                                        //Parse all values
-                                        double t1 = Double.parseDouble(lineParts[0]);
-                                        double t2 = Double.parseDouble(lineParts[1]);
-                                        double t3 = Double.parseDouble(lineParts[2]);
-                                        double p1 = Double.parseDouble(lineParts[3]);
-                                        double p2 = Double.parseDouble(lineParts[4]);
-                                        double p3 = Double.parseDouble(lineParts[5]);
-
-                                        //Update model
-                                        model.receiveReading("T1", round(t1));
-                                        model.receiveReading("T2", round(t2));
-                                        model.receiveReading("T3", round(t3));
-                                        model.receiveReading("P1", round(p1));
-                                        model.receiveReading("P2", round(p2));
-                                        model.receiveReading("P3", round(p3));
-                                    }
-                                    catch (NumberFormatException nfe) {
-                                        //If the second part isn't a number, just ignore the line
-                                        System.err.println("Skipping malformed data: " + line);
-                                    }
-                                }
-                            }
+                            //Unblock the GUI buttons
+                            SwingUtilities.invokeLater(() -> dashboard.setDeviceConnected(true));
+                            break;
                         }
-                        catch (Exception e) { e.printStackTrace(); }
+                    }
+                    catch (Exception e) {
+                        //Port likely doesn't exist or is busy, just keep trying
                     }
                 }
-                catch (Exception e) { e.printStackTrace(); }
+
+                //If still not found, wait 5 seconds before scanning again to save CPU
+                if (connectedPort == null) {
+                    try {
+                        Thread.sleep(5000);
+                    }
+                    catch (InterruptedException e) {
+                        return;
+                    }
+                }
             }
-            else {
-                //If no known ports work, return failure message
-                System.out.println("Failed to open port");
-                System.out.println("Available Ports:");
-                System.out.println(Arrays.toString(SerialPort.getCommPorts()));
+
+            //If we are here, we are connected
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connectedPort.getInputStream()))) {
+                //Clear any garbage data from the buffer
+                while (reader.ready()) reader.read();
+
+                //Read loop
+                while (connectedPort.isOpen()) {
+                    //Read from port
+                    String line = reader.readLine();
+                    if (line != null) {
+                        parseAndNotify(line, model);
+                    } else {
+                        //If line is null, the stream has closed (device is unplugged)
+                        throw new Exception("Stream ended");
+                    }
+                }
             }
-        }).start();
+            catch (Exception e) {
+                dashboard.logMessage("ERROR! Connection Lost. (" + e.getMessage() + ")");
+            }
+            finally {
+                //Cleanup
+                connectedPort.closePort();
+                connectedPort = null;
+
+                //Reblock the GUI buttons
+                SwingUtilities.invokeLater(() -> dashboard.setDeviceConnected(false));
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    /**
+     * Helper method to parse the CSV line and update the model.
+     * @param line The current line passed by the Arduino
+     * @param model The simulated Arduino model
+     */
+    private static void parseAndNotify(String line, ArduinoModel model) {
+        try {
+            //Parse CSV data (format: T1,T2,T3,P1,P2,P3)
+            String[] lineParts = line.trim().split(",");
+
+            //Validate data structure
+            if (lineParts.length == 6) {
+                //Parse all values
+                double t1 = Double.parseDouble(lineParts[0]);
+                double t2 = Double.parseDouble(lineParts[1]);
+                double t3 = Double.parseDouble(lineParts[2]);
+                double p1 = Double.parseDouble(lineParts[3]);
+                double p2 = Double.parseDouble(lineParts[4]);
+                double p3 = Double.parseDouble(lineParts[5]);
+
+                //Update model
+                model.receiveReading("T1", round(t1));
+                model.receiveReading("T2", round(t2));
+                model.receiveReading("T3", round(t3));
+                model.receiveReading("P1", round(p1));
+                model.receiveReading("P2", round(p2));
+                model.receiveReading("P3", round(p3));
+            }
+        }
+        catch (Exception e) {
+            //Ignore malformed lines
+        }
     }
 
     /**

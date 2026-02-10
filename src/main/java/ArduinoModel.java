@@ -39,7 +39,7 @@ public class ArduinoModel {
      * @param sensorID The ID of the sensor that was updated
      * @param value The current reading of the sensor
      */
-    public void recieveReading(String sensorID, double value) {
+    public void receiveReading(String sensorID, double value) {
         notifyObservers(sensorID, value);
     }
 }
