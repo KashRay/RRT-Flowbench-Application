@@ -17,6 +17,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Date;
 import java.util.Objects;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Handles the visualization (charts, labels, layouts).
@@ -96,6 +100,12 @@ public class DashboardView extends JFrame implements SensorObserver {
     private JButton stopButton;
     private JButton exportButton;
     private JButton nextTestButton;
+    private JMenuItem importMenuItem;
+    private JMenuItem exportMenuItem;
+    private JMenuItem clearMenuItem;
+    private JMenuItem runMenuItem;
+    private JMenuItem stopMenuItem;
+    private JMenuItem nextTestMenuItem;
 
     //Logic State
     private boolean isLogging = false;
@@ -427,30 +437,34 @@ public class DashboardView extends JFrame implements SensorObserver {
         JMenu fileMenu = new JMenu("File");
         menuBar.add(fileMenu);
         //Add "export CSV" button
-        JMenuItem exportItem = new JMenuItem("Export All Data (CSV)");
-        exportItem.addActionListener(_ -> exportToCSV());
-        fileMenu.add(exportItem);
+        exportMenuItem = new JMenuItem("Export All Data (CSV)");
+        exportMenuItem.addActionListener(_ -> exportToCSV());
+        fileMenu.add(exportMenuItem);
+        //Add "import CSV" button
+        importMenuItem = new JMenuItem("Import Data (CSV)");
+        importMenuItem.addActionListener(_ -> importFromCSV());
+        fileMenu.add(importMenuItem);
         //Add "clear all data" button
-        JMenuItem clearItem = new JMenuItem("Clear All Data");
-        clearItem.addActionListener(_ -> clearAllData());
-        fileMenu.add(clearItem);
+        clearMenuItem = new JMenuItem("Clear All Data");
+        clearMenuItem.addActionListener(_ -> clearAllData());
+        fileMenu.add(clearMenuItem);
 
         //RUN MENU
         //Setup menu header
         JMenu runMenu = new JMenu("Controls");
         menuBar.add(runMenu);
         //Add "start run" button
-        JMenuItem startItem = new JMenuItem("StartRun");
-        startItem.addActionListener(_ -> startLogging());
-        runMenu.add(startItem);
+        runMenuItem = new JMenuItem("StartRun");
+        runMenuItem.addActionListener(_ -> startLogging());
+        runMenu.add(runMenuItem);
         //Add "stop run" button
-        JMenuItem stopItem = new JMenuItem("StopRun");
-        stopItem.addActionListener(_ -> stopLogging(true));
-        runMenu.add(stopItem);
+        stopMenuItem = new JMenuItem("StopRun");
+        stopMenuItem.addActionListener(_ -> stopLogging(true));
+        runMenu.add(stopMenuItem);
         //Add "next test" button
-        JMenuItem nextTest = new JMenuItem("Next Test Series");
-        nextTest.addActionListener(_ -> commitSeries());
-        runMenu.add(nextTest);
+        nextTestMenuItem = new JMenuItem("Next Test Series");
+        nextTestMenuItem.addActionListener(_ -> commitSeries());
+        runMenu.add(nextTestMenuItem);
 
         //HELP MENU
         //Setup menu header
@@ -560,6 +574,11 @@ public class DashboardView extends JFrame implements SensorObserver {
         durationInput.setEnabled(connected);
         seriesSelector.setEnabled(connected);
         runSelector.setEnabled(connected);
+
+        //Toggle menus
+        runMenuItem.setEnabled(connected);
+        stopMenuItem.setEnabled(false);
+        nextTestMenuItem.setEnabled(connected);
 
         //Update status label
         if (connected) {
@@ -859,14 +878,26 @@ public class DashboardView extends JFrame implements SensorObserver {
      * @param enabled True if the buttons should be on, and false if the buttons should be off
      */
     private void toggleInputs(boolean enabled) {
+        //Toggle buttons
         runButton.setEnabled(enabled);
         stopButton.setEnabled(!enabled);
         exportButton.setEnabled(enabled);
+        nextTestMenuItem.setEnabled(enabled);
+
+        //Toggle inputs
         valveLiftInput.setEnabled(enabled);
         orificeInput.setEnabled(enabled);
         durationInput.setEnabled(enabled);
         seriesSelector.setEnabled(enabled);
         runSelector.setEnabled(enabled);
+
+        //Toggle menu buttons
+        runMenuItem.setEnabled(enabled);
+        stopMenuItem.setEnabled(!enabled);
+        nextTestMenuItem.setEnabled(enabled);
+        exportMenuItem.setEnabled(enabled);
+        importMenuItem.setEnabled(enabled);
+        clearMenuItem.setEnabled(enabled);
     }
 
     /**
@@ -1134,6 +1165,141 @@ public class DashboardView extends JFrame implements SensorObserver {
             }
             //Flush after every run to prevent buffer loss
             writer.flush();
+        }
+    }
+
+    /**
+     * Method for importing a previously saved CSV file.
+     * Rebuilds RunSnapshots and TestSeries, and refreshes UI.
+     */
+    private void importFromCSV() {
+        //Warn user about overwriting data
+        if (!sessionRuns.isEmpty() || !archivedSeries.isEmpty()) {
+            int confirm = JOptionPane.showConfirmDialog(this, "Importing data will overwrite your current session!\n Are you sure you want to proceed?", "Confirm Import", JOptionPane.YES_NO_OPTION);
+            if (confirm != JOptionPane.YES_OPTION) return;
+        }
+
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Import Flow Bench Data");
+
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File file = chooser.getSelectedFile();
+
+            //Read the selected file
+            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+                String line = br.readLine();
+                //Check if the header line follows the correct format
+                if (line == null || !line.contains("Series Name")) {
+                    JOptionPane.showMessageDialog(this, "Invalid CSV format! Header mismatch.", "ERROR!", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+
+                //Create a data structure (Series Name -> (Run ID -> RunBuilder)
+                Map<String, Map<Integer, RunBuilder>> parsedData = new LinkedHashMap<>();
+
+                while ((line = br.readLine()) != null) {
+                    //Split with -1 to keep trailing empty columns (like empty comments)
+                    String[] parts = line.split(",", -1);
+                    if (parts.length < 14) continue; //Skip corrupted rows
+
+                    try {
+                        //Parse all data
+                        String seriesName = parts[0];
+                        int runID = Integer.parseInt(parts[1]);
+                        double valveLift = Double.parseDouble(parts[2]), orificeDiameter = Double.parseDouble(parts[3]);
+                        double time = Double.parseDouble(parts[4]);
+                        double p1 = Double.parseDouble(parts[5]), p2 = Double.parseDouble(parts[6]), p3 = Double.parseDouble(parts[7]);
+                        double t1 = Double.parseDouble(parts[8]), t2 = Double.parseDouble(parts[9]), t3 = Double.parseDouble(parts[10]);
+                        double flowrateIn28OfH2O = Double.parseDouble(parts[11]), flowrateAtOrifice = Double.parseDouble(parts[12]), massFlowrate = Double.parseDouble(parts[13]);
+                        String comment = parts.length > 14 ? parts[14] : "";
+
+                        //Find or create the series mapping
+                        parsedData.putIfAbsent(seriesName, new LinkedHashMap<>());
+                        Map<Integer, RunBuilder> seriesRuns = parsedData.get(seriesName);
+
+                        //Find or create the run mapping
+                        seriesRuns.putIfAbsent(runID, new RunBuilder(valveLift, orificeDiameter));
+                        RunBuilder runBuilder = seriesRuns.get(runID);
+
+                        //Feed the data point into the builder
+                        runBuilder.addDataPoint(time, p1, p2, p3, t1, t2, t3, flowrateIn28OfH2O, flowrateAtOrifice, massFlowrate);
+                        if (!comment.isEmpty() && runBuilder.comment.isEmpty()) runBuilder.comment = comment; //Usually only the first one
+                    } catch (NumberFormatException e) {
+                        System.err.println("Skipping malformed row: " + line);
+                    }
+                }
+
+                //Clear all unsaved data
+                sessionRuns.clear();
+                archivedSeries.clear();
+
+                //Integrate imported data
+                for (Map.Entry<String, Map<Integer, RunBuilder>> seriesEntry : parsedData.entrySet()) {
+                    String seriesName = seriesEntry.getKey();
+                    List<RunSnapshot> rebuiltRuns = new ArrayList<>();
+
+                    //Build all runs for this series
+                    for (RunBuilder runBuilder : seriesEntry.getValue().values()) rebuiltRuns.add(runBuilder.build());
+
+                    //Sort into the correct memory locations
+                    if (seriesName.equals("Current_Unsaved_Session")) sessionRuns.addAll(rebuiltRuns);
+                    else archivedSeries.add(new TestSeries(seriesName, rebuiltRuns));
+                }
+
+                //Refresh UI
+                isUpdatingUI = true;
+                seriesSelector.removeAllItems();
+                seriesSelector.addItem("Current Unsaved Session");
+                for (TestSeries series : archivedSeries) seriesSelector.addItem(series.name());
+
+                //Switch view to imported data safely
+                if (!sessionRuns.isEmpty()) seriesSelector.setSelectedIndex(0);
+                else if (!archivedSeries.isEmpty()) seriesSelector.setSelectedIndex(archivedSeries.size());
+                isUpdatingUI = false;
+
+                //Trigger refresh
+                updateComparisonGraph();
+                onSeriesSelected();
+
+                //Inform user
+                JOptionPane.showMessageDialog(this, "Import Successful!");
+                logMessage("Imported data from: " + file.getName());
+            }
+            catch(Exception e){
+                JOptionPane.showMessageDialog(this, "Error reading file: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                logMessage("Import failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * Helper class used to rebuild RunSnapshots line-by-line during CSV import.
+     */
+    private static class RunBuilder {
+        double valveLift, orifice;
+        String comment = "";
+        List<Double> time = new ArrayList<>(), p1 = new ArrayList<>(), p2 = new ArrayList<>(), p3 = new ArrayList<>();
+        List<Double> t1 = new ArrayList<>(), t2 = new ArrayList<>(), t3 = new ArrayList<>();
+        List<Double> cfm28 = new ArrayList<>(), cfmOrifice = new ArrayList<>(), massFlow = new ArrayList<>();
+
+        RunBuilder(double valveLift, double orifice) {
+            this.valveLift = valveLift;
+            this.orifice = orifice;
+        }
+
+        void addDataPoint(double time,
+                          double p1, double p2, double p3,
+                          double t1, double t2, double t3,
+                          double flowrateIn28ofH2O, double flowrateAtOrifice, double massFlowRate) {
+            this.time.add(time);
+            this.p1.add(p1); this.p2.add(p2); this.p3.add(p3);
+            this.t1.add(t1); this.t2.add(t2); this.t3.add(t3);
+            this.cfm28.add(flowrateIn28ofH2O); this.cfmOrifice.add(flowrateAtOrifice); this.massFlow.add(massFlowRate);
+        }
+
+        RunSnapshot build() {
+            return new RunSnapshot(valveLift, orifice, time, p1, p2, p3, t1, t2, t3, cfm28, cfmOrifice, massFlow, comment);
         }
     }
 
