@@ -1,12 +1,12 @@
 import org.knowm.xchart.QuickChart;
 import org.knowm.xchart.XChartPanel;
 import org.knowm.xchart.XYChart;
+import org.knowm.xchart.XYSeries;
+import org.knowm.xchart.style.markers.SeriesMarkers;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import javax.swing.text.DefaultCaret;
 import java.awt.*;
 import java.io.File;
@@ -41,17 +41,20 @@ public class DashboardView extends JFrame implements SensorObserver {
     private XYChart flowChart;
     private XYChart pressureChart;
     private XYChart temperatureChart;
+    private XYChart comparisonChart;
     private XChartPanel<XYChart> flowPanel;
     private XChartPanel<XYChart> pressurePanel;
     private XChartPanel<XYChart> temperaturePanel;
+    private XChartPanel<XYChart> comparisonPanel;
 
     //View Switching Components
+    private JComboBox<String> seriesSelector;
     private JComboBox<String> runSelector;
     private JComboBox<String> graphSelector;
     private JPanel cardPanel;
     private CardLayout cardLayout;
 
-    //DATA HISTORY LINKS
+    //DATA STORAGE AND HISTORY
     //X-axis (time) shared by each graph
     private List<Double> xData;
     //Graph 1: Airflow
@@ -69,8 +72,10 @@ public class DashboardView extends JFrame implements SensorObserver {
     //Temporary buffers to hold values until the "commit" tick
     private double currentT1, currentT2, currentT3;
     private double currentP1, currentP2, currentP3;
-    //Test run storage (for exporting to CSV)
-    private final List<RunSnapshot> sessionRuns = new ArrayList<>();
+    //Hold the runs for the current series
+    private final List<RunSnapshot> sessionRuns;
+    //Hold previously completed series
+    private final List<TestSeries> archivedSeries;
 
     //UI Controls
     private JTextField valveLiftInput;
@@ -90,9 +95,12 @@ public class DashboardView extends JFrame implements SensorObserver {
     private JButton runButton;
     private JButton stopButton;
     private JButton exportButton;
+    private JButton nextTestButton;
 
     //Logic State
     private boolean isLogging = false;
+    private boolean isUpdatingUI = false;
+    private RunSnapshot currentlyViewedRun = null;
     private long startTime;
     private double targetDuration;
     private double currentValveLift;
@@ -106,9 +114,13 @@ public class DashboardView extends JFrame implements SensorObserver {
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         this.setLayout(new BorderLayout());
 
+        //Create run and test history
+        sessionRuns = new ArrayList<>(); archivedSeries = new ArrayList<>();
+
         //Create GUI with helper methods
         initializeData();
         initializeCharts();
+        this.setJMenuBar(createMenuBar());
         setupLayout();
         this.setVisible(true);
 
@@ -146,33 +158,46 @@ public class DashboardView extends JFrame implements SensorObserver {
         //Graph 1: Airflow
         flowChart = QuickChart.getChart("Airflow Calculations", "Time (s)", "CFM", "Flowrate at 28\" in H20", xData, cfm28Data);
         flowChart.addSeries("Flowrate at Orifice", xData, cfmOrificeData);
-        flowChart.getStyler().setLegendVisible(true);
-        flowChart.getStyler().setXAxisMin(0.0);
-        flowChart.getStyler().setToolTipsEnabled(true);
-        flowChart.getStyler().setZoomEnabled(true);
+        configureChartStyle(flowChart);
 
         //Graph 2: Pressures
         pressureChart = QuickChart.getChart("Pressure Sensors", "Time (s)", "Pressure (hPa)", "P1", xData, p1Data);
         pressureChart.addSeries("P2", xData, p2Data);
         pressureChart.addSeries("P3", xData, p3Data);
-        pressureChart.getStyler().setLegendVisible(true);
-        pressureChart.getStyler().setXAxisMin(0.0);
-        pressureChart.getStyler().setToolTipsEnabled(true);
-        pressureChart.getStyler().setZoomEnabled(true);
+        configureChartStyle(pressureChart);
 
         //Graph 3: Temperatures
         temperatureChart = QuickChart.getChart("Temperature Sensors", "Time (s)", "Temp (°C)", "T1", xData, t1Data);
         temperatureChart.addSeries("T2", xData, t2Data);
         temperatureChart.addSeries("T3", xData, t3Data);
-        temperatureChart.getStyler().setLegendVisible(true);
-        temperatureChart.getStyler().setXAxisMin(0.0);
-        temperatureChart.getStyler().setToolTipsEnabled(true);
-        temperatureChart.getStyler().setZoomEnabled(true);
+        configureChartStyle(temperatureChart);
+
+        //Graph 4: Flow Comparison Chart
+        comparisonChart = new XYChart(800, 600);
+        comparisonChart.setTitle("Flow Comparison");
+        comparisonChart.setXAxisTitle("Valve Lift (Inches)");
+        comparisonChart.setYAxisTitle("CFM");
+        configureChartStyle(comparisonChart);
+        comparisonChart.addSeries("Pending...", new double[]{0}, new double[]{0});
 
         //Wrap charts in panels
         flowPanel = new XChartPanel<>(flowChart);
         pressurePanel = new XChartPanel<>(pressureChart);
         temperaturePanel = new XChartPanel<>(temperatureChart);
+        comparisonPanel = new XChartPanel<>(comparisonChart);
+    }
+
+    /**
+     * Helper method to apply consistent, high-visibility styling to all charts.
+     * @param chart The chart to be styled
+     */
+    private void configureChartStyle(XYChart chart) {
+        chart.getStyler().setLegendVisible(true);
+        chart.getStyler().setXAxisMin(0.0);
+        chart.getStyler().setToolTipsEnabled(true);
+        chart.getStyler().setZoomEnabled(true);
+        chart.getStyler().setMarkerSize(10);
+        chart.getStyler().setDefaultSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Line);
     }
 
     /**
@@ -185,6 +210,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         cardPanel.add(flowPanel, "Airflow Calculations");
         cardPanel.add(pressurePanel, "Pressure Sensors");
         cardPanel.add(temperaturePanel, "Temperature Sensors");
+        cardPanel.add(comparisonPanel, "Flow Comparison");
         JPanel selectorHeader = createSelectorHeader();
         JPanel centerContainer = new JPanel(new BorderLayout());
         centerContainer.add(selectorHeader, BorderLayout.NORTH);
@@ -208,22 +234,31 @@ public class DashboardView extends JFrame implements SensorObserver {
         JPanel header = new JPanel(new FlowLayout(FlowLayout.CENTER));
         header.setBackground(Color.lightGray);
 
+        //Create series selector dropdown menu
+        seriesSelector = new JComboBox<>();
+        seriesSelector.addItem("Current Unsaved Session");
+        seriesSelector.setFont(new Font("Arial", Font.BOLD, 14));
+        seriesSelector.addActionListener(_ -> onSeriesSelected());
+
         //Create run selector dropdown menu
         runSelector = new JComboBox<>();
         runSelector.addItem("No Runs Recorded");
         runSelector.setFont(new Font("Arial", Font.BOLD, 14));
-        runSelector.addActionListener(_ -> updateDisplayRun());
+        runSelector.addActionListener(_ -> onRunSelected());
 
         //Create graph selector dropdown menu
-        graphSelector = new JComboBox<>(new String[]{"Airflow Calculations", "Pressure Sensors", "Temperature Sensors"});
+        graphSelector = new JComboBox<>(new String[]{"Airflow Calculations", "Pressure Sensors", "Temperature Sensors", "Flow Comparison"});
         graphSelector.setFont(new Font("Arial", Font.BOLD, 14));
         graphSelector.addActionListener(_ -> cardLayout.show(cardPanel, (String) graphSelector.getSelectedItem()));
 
         //Finalize selection header creation
+        header.add(new JLabel("Select Test Series:"));
+        header.add(seriesSelector);
+        header.add(Box.createHorizontalStrut(20));
         header.add(new JLabel("Select Run:"));
         header.add(runSelector);
         header.add(Box.createHorizontalStrut(20));
-        header.add(new JLabel("Select Graph View: "));
+        header.add(new JLabel("Select Graph View:"));
         header.add(graphSelector);
         return header;
     }
@@ -274,23 +309,10 @@ public class DashboardView extends JFrame implements SensorObserver {
         durationInput.setFont(new Font("Arial", Font.PLAIN, 14));
         c.gridx = 2; c.gridy = 1; panel.add(createInputSubPanel("Testing Duration (s):", durationInput), c);
 
-        //ROW 2: Instructions and Comments
-        //Instructions label
-        JLabel instructionsLabel = new JLabel("<html><center>Instructions:<br>Enter initial values and then hit RUN.<br>Hit STOP to suspend LOGGING.<br>Hit EXPORT CSV to export pending runs.</center></html>");
-        instructionsLabel.setOpaque(true);
-        instructionsLabel.setBackground(new Color(220, 220, 240)); //Light purple
-        instructionsLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        instructionsLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-        c.gridx = 0; c.gridy = 2; c.gridheight = 1; panel.add(instructionsLabel, c);
-
-        //Comments area
+        //ROW 2: Comments
+        // Comment area
         commentsArea = new JTextArea(5, 20);
-        commentsArea.setBorder(BorderFactory.createTitledBorder("Comments About Previous Trial:"));
-        commentsArea.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { updateLastRunComment(); }
-            public void removeUpdate(DocumentEvent e) { updateLastRunComment(); }
-            public void changedUpdate(DocumentEvent e) { updateLastRunComment(); }
-        });
+        commentsArea.setBorder(BorderFactory.createTitledBorder("Comments About Displayed Run:"));
         c.gridx = 1; c.gridy = 2; c.gridwidth = 2; c.gridheight = 2; panel.add(new JScrollPane(commentsArea), c); //Spans 2 columns and rows
 
         //ROW 3: Test Status
@@ -300,7 +322,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         testStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
         testStatusLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
         testStatusLabel.setFont(new Font("Arial", Font.BOLD, 14));
-        c.gridx = 0; c.gridy = 3; c.gridwidth = 1; c.gridheight = 1; panel.add(testStatusLabel, c);
+        c.gridx = 0; c.gridy = 2; c.gridwidth = 1; c.gridheight = 1; panel.add(testStatusLabel, c);
 
         //ROW 4: Buttons
         //Run test button
@@ -308,19 +330,22 @@ public class DashboardView extends JFrame implements SensorObserver {
         runButton.setBackground(Color.GREEN);
         runButton.addActionListener(_ -> startLogging());
         c.gridx = 0; c.gridy = 4; c.gridwidth = 1; panel.add(runButton, c);
-
         //Stop test button
         stopButton = new JButton("Stop");
         stopButton.setBackground(Color.RED);
         stopButton.setForeground(Color.WHITE);
         stopButton.addActionListener(_ -> stopLogging(true));
         c.gridx = 1; c.gridy = 4; c.gridwidth = 1; panel.add(stopButton, c);
-
         //Export to CSV button
         exportButton = new JButton("Export CSV");
         exportButton.setBackground(Color.YELLOW);
         exportButton.addActionListener(_ -> exportToCSV());
         c.gridx = 2; c.gridy = 4; c.gridwidth = 1; panel.add(exportButton, c);
+        //Next test/commit series button
+        nextTestButton = new JButton("Next Test (Commit New Series)");
+        nextTestButton.setBackground(new Color(150, 200, 255)); //Light blue
+        nextTestButton.addActionListener(_ -> commitSeries());
+        c.gridx = 0; c.gridy = 3; c.gridwidth = 1; panel.add(nextTestButton, c);
 
         //RIGHT COLUMN: Sensor Status Lights
         c.gridx = 3; c.gridy = 0; c.gridheight = 5; c.gridwidth = 1; c.weightx = 0.5; panel.add(createSensorStatusPanel(), c);
@@ -390,6 +415,117 @@ public class DashboardView extends JFrame implements SensorObserver {
         return panel;
     }
 
+    /**
+     * Helper method for creating the entire menu bar and all submenus.
+     * @return The complete menu layout and dropdown menus
+     */
+    private JMenuBar createMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+
+        //FILE MENU
+        //Setup menu header
+        JMenu fileMenu = new JMenu("File");
+        menuBar.add(fileMenu);
+        //Add "export CSV" button
+        JMenuItem exportItem = new JMenuItem("Export All Data (CSV)");
+        exportItem.addActionListener(_ -> exportToCSV());
+        fileMenu.add(exportItem);
+        //Add "clear all data" button
+        JMenuItem clearItem = new JMenuItem("Clear All Data");
+        clearItem.addActionListener(_ -> clearAllData());
+        fileMenu.add(clearItem);
+
+        //RUN MENU
+        //Setup menu header
+        JMenu runMenu = new JMenu("Controls");
+        menuBar.add(runMenu);
+        //Add "start run" button
+        JMenuItem startItem = new JMenuItem("StartRun");
+        startItem.addActionListener(_ -> startLogging());
+        runMenu.add(startItem);
+        //Add "stop run" button
+        JMenuItem stopItem = new JMenuItem("StopRun");
+        stopItem.addActionListener(_ -> stopLogging(true));
+        runMenu.add(stopItem);
+        //Add "next test" button
+        JMenuItem nextTest = new JMenuItem("Next Test Series");
+        nextTest.addActionListener(_ -> commitSeries());
+        runMenu.add(nextTest);
+
+        //HELP MENU
+        //Setup menu header
+        JMenu helpMenu = new JMenu("Help");
+        menuBar.add(helpMenu);
+        //Add "setup instructions" button
+        JMenuItem setupItem = new JMenuItem("Setup Instructions");
+        setupItem.addActionListener(_ -> showSetupInstructions());
+        helpMenu.add(setupItem);
+        //Add "logging instructions" button
+        JMenuItem loggingHelpItem = new JMenuItem("Logging Instructions");
+        loggingHelpItem.addActionListener(_ -> showLoggingInstructions());
+        helpMenu.add(loggingHelpItem);
+        //Add "export instructions" menu
+        JMenuItem exportHelpItem = new JMenuItem("Exporting Instructions");
+        exportHelpItem.addActionListener(_ -> showExportingInstructions());
+        helpMenu.add(exportHelpItem);
+        //Add "next test and flow comparison instructions" menu
+        JMenuItem nextTestHelpItem  = new JMenuItem("Next Test and Flow Comparison Instructions");
+        nextTestHelpItem.addActionListener(_ -> showNextTextInstructions());
+        helpMenu.add(nextTestHelpItem);
+
+        return menuBar;
+    }
+
+    // === INSTRUCTIONS ===
+
+    /**
+     * Helper method for displaying an information box detailing how to start using the application.
+     */
+    private void showSetupInstructions() {
+        String msg = """
+                HOW TO SETUP FSAE FLOWBENCH TESTER:
+                To setup the software, make sure that the Arduino is connected to the device via a
+                serial cable. You can observe the status of the connection with the status label, or
+                the activity log. All control buttons will be blocked until a USB connection is
+                established and data values are being read. At any point, if the USB is disconnected,
+                the system will automatically stop logging results, and require the user to reconnect
+                the Arduino before continuing. If any issues with setup persist, you can contact
+                "rayyankashif@cmail.carleton.ca".
+                """;
+
+        JOptionPane.showMessageDialog(this, msg, "Setup Instructions", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    /**
+     * Helper method for displaying an information box detailing how logging controls and labels work.
+     */
+    private void showLoggingInstructions() {
+        String msg = """
+                LOGGING:
+        """;
+        JOptionPane.showMessageDialog(this, msg, "Logging Instructions", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    /**
+     * Helper method for displaying an information box detailing how exporting logged data and saving graphs works.
+     */
+    private void showExportingInstructions() {
+        String msg = """
+                EXPORTING INSTRUCTOR:
+        """;
+        JOptionPane.showMessageDialog(this, msg, "Exporting Instructions", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    /**
+     * Helper method for displaying an information box detailing how commiting and iterating to the next test works.
+     */
+    private void showNextTextInstructions() {
+        String msg = """
+                NEXT TEXT:
+        """;
+        JOptionPane.showMessageDialog(this, msg, "Next Test and Flow Comparison Instructions", JOptionPane.INFORMATION_MESSAGE);
+    }
+
     // === LOGIC METHODS ===
 
     /**
@@ -416,11 +552,13 @@ public class DashboardView extends JFrame implements SensorObserver {
         //Toggle buttons
         runButton.setEnabled(connected);
         stopButton.setEnabled(false); //Always disabled until a run actually starts
+        nextTestButton.setEnabled(connected);
 
         //Toggle inputs
         valveLiftInput.setEnabled(connected);
         orificeInput.setEnabled(connected);
         durationInput.setEnabled(connected);
+        seriesSelector.setEnabled(connected);
         runSelector.setEnabled(connected);
 
         //Update status label
@@ -433,65 +571,6 @@ public class DashboardView extends JFrame implements SensorObserver {
             testStatusLabel.setBackground(Color.ORANGE);
             logMessage("Waiting for Arduino connection...");
         }
-    }
-
-    /**
-     * Helper method to clear all graph points.
-     */
-    private void resetDataLists() {
-        xData.clear();
-        cfm28Data.clear(); cfmOrificeData.clear(); massFlowData.clear();
-        p1Data.clear(); p2Data.clear(); p3Data.clear();
-        t1Data.clear(); t2Data.clear(); t3Data.clear();
-    }
-
-    /**
-     * Switches graphs to selected run and refreshes data.
-     */
-    public void updateDisplayRun() {
-        int index = runSelector.getSelectedIndex();
-        String selectedItem =  (String) runSelector.getSelectedItem();
-
-        //If index is -1 (cleared), do nothing
-        if (index == -1 || selectedItem == null || selectedItem.equals("No Runs Recorded")) return;
-
-        //SessionRuns is 0-indexed
-        if (index < sessionRuns.size()) {
-            RunSnapshot snap = sessionRuns.get(index);
-            refreshChartsWithData(snap.time, snap.p1, snap.p2, snap.p3, snap.t1, snap.t2, snap.t3, snap.cfmIn28OfH20, snap.cfmAtOrifice);
-        }
-    }
-
-    /**
-     * Helper method to push specific data lists to the charts
-     * @param x The list of timestamps
-     * @param p1 The list of recorded P1 sensor readings
-     * @param p2 The list of recorded P2 sensor readings
-     * @param p3 The list of recorded P3 sensor readings
-     * @param t1 The list of recorded T1 sensor readings
-     * @param t2 The list of recorded T2 sensor readings
-     * @param t3 The list of recorded T3 sensor readings
-     * @param cfm28 The list of recorded CFM at 28 in H20 calculations
-     * @param cfmO The list of recorded CFM at orifice calculations
-     */
-    public void refreshChartsWithData(List<Double> x,
-                                      List<Double> p1, List<Double> p2, List<Double> p3,
-                                      List<Double> t1, List<Double> t2, List<Double> t3,
-                                      List<Double> cfm28, List<Double> cfmO) {
-        temperatureChart.updateXYSeries("T1", x, t1, null);
-        temperatureChart.updateXYSeries("T2", x, t2, null);
-        temperatureChart.updateXYSeries("T3", x, t3, null);
-
-        pressureChart.updateXYSeries("P1", x, p1, null);
-        pressureChart.updateXYSeries("P2", x, p2, null);
-        pressureChart.updateXYSeries("P3", x, p3, null);
-
-        flowChart.updateXYSeries("Flowrate at 28\" in H20", x, cfm28, null);
-        flowChart.updateXYSeries("Flowrate at Orifice", x, cfmO, null);
-
-        flowPanel.repaint();
-        pressurePanel.repaint();
-        temperaturePanel.repaint();
     }
 
     /**
@@ -512,14 +591,150 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
-     * Helper method to update the comment of the last saved run in memory when not currently logging.
-     * This allows the user to edit the comment after the run finishes.
+     * Helper method to clear all graph points.
      */
-    private void updateLastRunComment() {
-        //Update the record in memory
-        if (!isLogging && !sessionRuns.isEmpty()) sessionRuns.getLast().comment = commentsArea.getText().replace("\n", " ").replace(",", ";").trim();
+    private void resetDataLists() {
+        xData.clear();
+        cfm28Data.clear(); cfmOrificeData.clear(); massFlowData.clear();
+        p1Data.clear(); p2Data.clear(); p3Data.clear();
+        t1Data.clear(); t2Data.clear(); t3Data.clear();
     }
 
+    /**
+     * Method to pull the comment from the text box and save it to the run currently displayed.
+     */
+    private void saveCurrentComment() {
+        if (currentlyViewedRun != null) {
+            String text = commentsArea.getText().replace("\n", " ").replace(",", ";").trim();
+            currentlyViewedRun.setComment(text);
+        }
+    }
+
+    /**
+     * Method for selecting a series with the dropdown menu.
+     * Updates the UI and run selector based on the currently selected run.
+     */
+    private void onSeriesSelected() {
+        if (isUpdatingUI) return;
+        saveCurrentComment(); //Save before switching
+
+        isUpdatingUI = true;
+        int seriesIndex = seriesSelector.getSelectedIndex();
+        List<RunSnapshot> runsToDisplay;
+
+        //Current series is 0, anything else is an archived series
+        if (seriesIndex <= 0) runsToDisplay = sessionRuns;
+        else runsToDisplay = archivedSeries.get(seriesIndex - 1).runs();
+
+        //Update UI based on selected series
+        runSelector.removeAllItems();
+        if (runsToDisplay.isEmpty()) {
+            runSelector.addItem("No Runs Recorded");
+            currentlyViewedRun = null;
+            commentsArea.setText("");
+            showEmptyCharts();
+        }
+        else {
+            for (int i = 0; i < runsToDisplay.size(); i++) runSelector.addItem("Run #" + (i + 1));
+
+            //By default, select the last run in that series
+            int lastIndex = runsToDisplay.size() - 1;
+            runSelector.setSelectedIndex(lastIndex);
+            currentlyViewedRun = runsToDisplay.get(lastIndex);
+
+            //Populate the comment box with the saved comment
+            commentsArea.setText(currentlyViewedRun.getComment() != null ? currentlyViewedRun.getComment() : "");
+            refreshChartsForRun(currentlyViewedRun);
+        }
+        isUpdatingUI = false;
+    }
+
+    /**
+     * Method for selecting a run with the dropdown menu.
+     * Updates the UI based on the currently selected run.
+     */
+    private void onRunSelected() {
+        if (isUpdatingUI) return;
+        saveCurrentComment(); //Save before switching
+
+        int seriesIndex = seriesSelector.getSelectedIndex();
+        int runIndex = runSelector.getSelectedIndex();
+
+        //If there are no recorded runs, do nothing
+        if (runIndex == -1 || runSelector.getItemAt(0).equals("No Runs Recorded")) {
+            currentlyViewedRun = null;
+            return;
+        }
+
+        List<RunSnapshot> runsToDisplay = (seriesIndex <= 0) ? sessionRuns : archivedSeries.get(seriesIndex - 1).runs();
+
+        if (runIndex < runsToDisplay.size()) {
+            currentlyViewedRun = runsToDisplay.get(runIndex);
+
+            //Update the text box without triggering any potential loops
+            isUpdatingUI = true;
+            commentsArea.setText(currentlyViewedRun.getComment() != null ? currentlyViewedRun.getComment() : "");
+            isUpdatingUI = false;
+
+            refreshChartsForRun(currentlyViewedRun);
+        }
+    }
+
+    /**
+     * A helper method to deconstruct a run into components for charting.
+     * @param run The run to be deconstructed and displayed
+     */
+    private void refreshChartsForRun(RunSnapshot run) {
+        refreshChartsWithData(run.getTime(), run.getP1(), run.getP2(), run.getP3(),
+                run.getT1(), run.getT2(), run.getT3(),
+                run.getCFMIn28OfH2O(), run.getCFMAtOrifice());
+    }
+
+    /**
+     * Helper method to push dummy 0 values to safely clear the charts.
+     */
+    private void showEmptyCharts() {
+        List<Double> zero = java.util.List.of(0.0);
+        refreshChartsWithData(zero, zero, zero, zero, zero, zero, zero, zero, zero);
+    }
+
+    /**
+     * Method to push specific data lists to the charts
+     * @param x The list of timestamps
+     * @param p1 The list of recorded P1 sensor readings
+     * @param p2 The list of recorded P2 sensor readings
+     * @param p3 The list of recorded P3 sensor readings
+     * @param t1 The list of recorded T1 sensor readings
+     * @param t2 The list of recorded T2 sensor readings
+     * @param t3 The list of recorded T3 sensor readings
+     * @param flowrateIn28OfH20 The list of recorded CFM at 28 in H20 calculations
+     * @param flowrateAtOrifice The list of recorded CFM at orifice calculations
+     */
+    public void refreshChartsWithData(List<Double> x,
+                                      List<Double> p1, List<Double> p2, List<Double> p3,
+                                      List<Double> t1, List<Double> t2, List<Double> t3,
+                                      List<Double> flowrateIn28OfH20, List<Double> flowrateAtOrifice) {
+        temperatureChart.updateXYSeries("T1", x, t1, null);
+        temperatureChart.updateXYSeries("T2", x, t2, null);
+        temperatureChart.updateXYSeries("T3", x, t3, null);
+
+        pressureChart.updateXYSeries("P1", x, p1, null);
+        pressureChart.updateXYSeries("P2", x, p2, null);
+        pressureChart.updateXYSeries("P3", x, p3, null);
+
+        flowChart.updateXYSeries("Flowrate at 28\" in H20", x, flowrateIn28OfH20, null);
+        flowChart.updateXYSeries("Flowrate at Orifice", x, flowrateAtOrifice, null);
+
+        flowPanel.repaint();
+        pressurePanel.repaint();
+        temperaturePanel.repaint();
+    }
+
+    /**
+     * Helper method for storing currently read data for logging.
+     * @param sensorID The ID of the sensor currently being read
+     * @param value The value the sensor is currently reading
+     */
     private void bufferSensorData(String sensorID, double value) {
         switch (sensorID) {
             case "T1": currentT1 = value; break;
@@ -545,6 +760,101 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
+     * Method to iterate to the next test.
+     * Takes all current runs and bundles them into a collection.
+     * Clears the screen for the next component.
+     * Updates the flow comparison graph with the newly created test.
+     */
+    private void commitSeries () {
+        if (sessionRuns.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No runs to save! Perform tests first.", "ERROR!", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        //Save comment before archiving run
+        saveCurrentComment();
+
+        String name = JOptionPane.showInputDialog(this, "Enter a name for this test (e.g., 'Engine 1'): ");
+        if (name == null || name.trim().isEmpty()) return;
+
+        //Save runs in new test series
+        TestSeries series = new TestSeries(name, sessionRuns);
+        archivedSeries.add(series);
+
+        //Update the flow comparison graph
+        updateComparisonGraph();
+
+        //Clear data and UI for the next series
+        sessionRuns.clear();
+        isUpdatingUI = true;
+        seriesSelector.addItem(name);
+        seriesSelector.setSelectedIndex(0);
+        runSelector.removeAllItems();
+        runSelector.addItem("No Runs Recorded");
+        isUpdatingUI = false;
+        currentlyViewedRun = null;
+        commentsArea.setText("");
+        showEmptyCharts();
+
+        //Inform user
+        logMessage("Series '" + name + "' saved. Ready for next test.");
+        JOptionPane.showMessageDialog(this, "Series '" + name + "' saved. You can now start testing the next component.", "SERIES SAVED!", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    /**
+     * Method to update the final flow comparison chart based on all finished tests.
+     */
+    private void updateComparisonGraph () {
+        //Clear old series
+        comparisonChart.getSeriesMap().clear();
+
+        for (TestSeries series : archivedSeries) {
+            List<Double> xLifts = new ArrayList<>();
+            List<Double> yFlows = new ArrayList<>();
+
+            for (RunSnapshot run : series.runs()) {
+                xLifts.add(run.getValveLift());
+                yFlows.add(run.getAverageFlowrateIn28OfH2O());
+            }
+
+            //Sort by lifts (x-axis) to ensure line connects correctly
+            if (!xLifts.isEmpty()) {
+                XYSeries xySeries = comparisonChart.addSeries(series.name(), xLifts, yFlows);
+                xySeries.setMarker(SeriesMarkers.CIRCLE);
+            }
+        }
+        comparisonPanel.repaint();
+    }
+
+    /**
+     * Method to wipe all data in the system currently.
+     */
+    private void clearAllData() {
+        int confirm = JOptionPane.showConfirmDialog(this, "Are you sure? This will wipe ALL runs and series.", "CONFIRM CLEAR", JOptionPane.YES_NO_OPTION);
+        if (confirm == JOptionPane.YES_OPTION) {
+            sessionRuns.clear();
+            archivedSeries.clear();
+
+            isUpdatingUI = true;
+            seriesSelector.removeAllItems();
+            seriesSelector.addItem("Current Unsaved Session");
+            runSelector.removeAllItems();
+            runSelector.addItem("No Runs Recorded");
+            isUpdatingUI = false;
+
+
+            comparisonChart.getSeriesMap().clear();
+            comparisonChart.addSeries("Pending...", new double[]{0}, new double[]{0});
+            comparisonPanel.repaint();
+
+            currentlyViewedRun = null;
+            commentsArea.setText("");
+            showEmptyCharts();
+            logMessage("All data cleared!");
+        }
+    }
+
+    /**
      * Helper method used to quickly toggle on/off all button functionality for trial running.
      * @param enabled True if the buttons should be on, and false if the buttons should be off
      */
@@ -555,6 +865,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         valveLiftInput.setEnabled(enabled);
         orificeInput.setEnabled(enabled);
         durationInput.setEnabled(enabled);
+        seriesSelector.setEnabled(enabled);
         runSelector.setEnabled(enabled);
     }
 
@@ -629,6 +940,22 @@ public class DashboardView extends JFrame implements SensorObserver {
      * Double checks if the inputted values are valid.
      */
     private void startLogging() {
+        //Save the comment from whatever run is being looked at currently
+        saveCurrentComment();
+
+        //Force dropdown back to the current session if they were looking at old data
+        if (seriesSelector.getSelectedIndex() != 0) {
+            isUpdatingUI = true;
+            seriesSelector.setSelectedIndex(0);
+            runSelector.removeAllItems();
+            if (sessionRuns.isEmpty()) runSelector.addItem("No Runs Recorded");
+            else {
+                for (int i = 0; i < sessionRuns.size(); i++) runSelector.addItem("Run #" + i + 1);
+                runSelector.setSelectedIndex(sessionRuns.size() - 1);
+            }
+            isUpdatingUI = false;
+        }
+
         try {
             //Validate duration
             double seconds = Double.parseDouble(durationInput.getText());
@@ -652,8 +979,11 @@ public class DashboardView extends JFrame implements SensorObserver {
             startTime = System.currentTimeMillis();
             isLogging = true;
 
+
             //Update UI
             toggleInputs(false);
+            currentlyViewedRun = null; //Detach the comment box
+            commentsArea.setText("");
             testStatusLabel.setText("Status: RUNNING");
             testStatusLabel.setBackground(Color.GREEN);
 
@@ -661,7 +991,7 @@ public class DashboardView extends JFrame implements SensorObserver {
             logMessage("Started Run #" + (sessionRuns.size() + 1) + " (Lift: " + lift + ", Orifice: " + orifice + ", Duration: " + seconds + "s)");
         }
         catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Please ensure your input values are valid numbers!", "ERROR", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Please ensure your input values are valid numbers!", "ERROR!", JOptionPane.ERROR_MESSAGE);
             logMessage("ERROR: Start failed due to invalid input.");
         }
     }
@@ -694,33 +1024,33 @@ public class DashboardView extends JFrame implements SensorObserver {
         RunSnapshot run = new RunSnapshot(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData, massFlowData, safeComment);
         sessionRuns.add(run);
 
-        //If this is the first run, remove the "No Runs Recorded" placeholder
+        //Update UI
+        isUpdatingUI = true;
         if (runSelector.getItemAt(0).equals("No Runs Recorded")) runSelector.removeAllItems();
-
-        //Add the finished run to the run selector
         runSelector.addItem("Run #" + sessionRuns.size());
-
-        //Select the current run automatically for the user to see
         runSelector.setSelectedIndex(runSelector.getItemCount() - 1);
+        currentlyViewedRun = run;
+        isUpdatingUI = false;
 
         //Log action depending on if the run was interrupted or not
         if (manualStop) logMessage("Run #" + sessionRuns.size() + " STOPPED by user after " + String.format("%.1f", actualDuration) + "s.");
         else logMessage("Run #" + sessionRuns.size() + " COMPLETED (" + targetDuration + "s).");
-        logMessage("Total Runs Pending Export: " + sessionRuns.size());
 
         //Update status to show how many runs are pending export
         JOptionPane.showMessageDialog(this, "Run #" + sessionRuns.size() + " recorded!\nAdjust values and press RUN for next trial,\nor press EXPORT to save all.");
     }
 
     /**
-     * Method for exporting all recorded test runs to a CSV file.
+     * Method for exporting all recorded tests and runs to a CSV file.
      */
     private void exportToCSV() {
-        if (sessionRuns.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No session recorded! Run a test first.", "ERROR", JOptionPane.ERROR_MESSAGE);
-            logMessage("Export failed: No runs in memory.");
+        if (sessionRuns.isEmpty()  && archivedSeries.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No session recorded! Run a test first.", "ERROR!", JOptionPane.ERROR_MESSAGE);
             return;
         }
+
+        //Save the comment from the currently displayed run
+        saveCurrentComment();
 
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Save Flow Bench Data");
@@ -733,33 +1063,77 @@ public class DashboardView extends JFrame implements SensorObserver {
 
             try (PrintWriter writer = new PrintWriter(file)) {
                 //CSV header
-                writer.println("Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice,Mass Flowrate (kg/s),Comments");
+                writer.println("Series Name,Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice (CFM),Mass Flowrate (kg/s),Comments");
 
-                //Loop through all saved runs
-                for (int i = 0; i < sessionRuns.size(); i++) {
-                    RunSnapshot run = sessionRuns.get(i);
-                    int runID = i + 1;
-
-                    //Loop through data points in this run
-                    for (int j = 0; j < run.time.size(); j++) {
-                        writer.printf("%d,%s,%s,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%.5f,%s%n",
-                                runID,
-                                run.valveLift,
-                                run.orificeDiameter,
-                                run.time.get(j),
-                                run.p1.get(j), run.p2.get(j), run.p3.get(j),
-                                run.t1.get(j), run.t2.get(j), run.t3.get(j),
-                                run.cfmIn28OfH20.get(j), run.cfmAtOrifice.get(j), run.massFlowrate.get(j),
-                                (j == 0) ? run.comment : ""
-                        );
+                //Export archived series (saved)
+                for (TestSeries series : archivedSeries) {
+                    try {
+                        writeRunsToCSV(writer, series.name(), series.runs());
+                    }
+                    catch (Exception e) {
+                        logMessage("Error while exporting " + series.name() + ": " + e.getMessage());
+                        e.printStackTrace();
                     }
                 }
+
+                //Export current session (unsaved)
+                if (!sessionRuns.isEmpty()) {
+                    try {
+                        writeRunsToCSV(writer, "Current_Unsaved_Session", sessionRuns);
+                    }
+                    catch (Exception e) {
+                        logMessage("Error while exporting " + sessionRuns.size() + ": " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }
+
+                //Ensure data is written
+                writer.flush();
+
+                //Inform user
                 JOptionPane.showMessageDialog(this, "Export Successful!\nSession cleared.");
                 logMessage("Exported " + sessionRuns.size() + " runs to: " + file.getName());
             }
             catch (IOException e) {
                 JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Method to document runs from a specific series.
+     * @param writer The initialized file writer object
+     * @param seriesName The name of the test series the runs fall under
+     * @param runs The list of runs under the specific test series
+     */
+    private void writeRunsToCSV(PrintWriter writer, String seriesName, List<RunSnapshot> runs) {
+        //Loop through all saved runs
+        for (int i = 0; i < runs.size(); i++) {
+            RunSnapshot run = runs.get(i);
+            int runID = i + 1;
+
+            //Check if values are null
+            if (run.getTime() == null) {
+                System.err.println("Skipping corrupt run in " + seriesName);
+                continue;
+            }
+
+            //Loop through data points in this run
+            for (int j = 0; j < run.getTime().size(); j++) {
+                writer.printf("%s,%d,%s,%s,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.2f,%.2f,%.5f,%s%n",
+                        seriesName,
+                        runID,
+                        run.getValveLift(),
+                        run.getOrificeDiameter(),
+                        run.getTime().get(j),
+                        run.getP1().get(j), run.getP2().get(j), run.getP3().get(j),
+                        run.getT1().get(j), run.getT2().get(j), run.getT3().get(j),
+                        run.getCFMIn28OfH2O().get(j), run.getCFMAtOrifice().get(j), run.getMassFlowrate().get(j),
+                        (j == 0) ? run.getComment() : ""
+                );
+            }
+            //Flush after every run to prevent buffer loss
+            writer.flush();
         }
     }
 
