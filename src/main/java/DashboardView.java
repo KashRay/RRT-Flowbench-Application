@@ -515,7 +515,13 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void showLoggingInstructions() {
         String msg = """
-                LOGGING:
+                LOGGING:\n
+                1) Record the sizes of the Valve Lift and Orifice Diameter in the appropiate input fields.\n
+                2) Set the duration of each test (in seconds) in the Testing Duration input field.\n
+                3) Once the above steps are completed and you wish to begin recording, hit the RUN button. The system will record your values for the length of the Testing Duration.\n
+                \n
+                After each run, you can write any comments about the run in the Comments box.\n
+                If the recording needs to be stopped before the lenght of the Testing Duration has passed, you can press the STOP button to end the current test.
         """;
         JOptionPane.showMessageDialog(this, msg, "Logging Instructions", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -525,7 +531,8 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void showExportingInstructions() {
         String msg = """
-                EXPORTING INSTRUCTOR:
+                EXPORTING:\n
+                To export the data of your Tests, press the Export CSV button. This will allow you to save the data of your various tests on your computer as a CSV file.
         """;
         JOptionPane.showMessageDialog(this, msg, "Exporting Instructions", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -535,7 +542,9 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void showNextTextInstructions() {
         String msg = """
-                NEXT TEXT:
+                NEXT TEST:\n
+                To start a new test, press the Next Test (Commit New Series) button. This will create a new test session with no runs recorded.\n
+                Your old tests will still be available and can be accessed by using the Select Test Series dropdown menu.
         """;
         JOptionPane.showMessageDialog(this, msg, "Next Test and Flow Comparison Instructions", JOptionPane.INFORMATION_MESSAGE);
     }
