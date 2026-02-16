@@ -31,16 +31,6 @@ import java.util.Map;
  * @version 1.0
  */
 public class DashboardView extends JFrame implements SensorObserver {
-    //Constants
-    public static double DISCHARGE_COEFFICIENT = 0.61;
-    public static double PIPE_INNER_DIAMETER = 4.0;
-    public static double EXPANSIBILITY_FACTOR = 1;
-    public static double SPECIFIC_GAS_CONSTANT = 287.1;
-    public static double INCHES_TO_METERS = 0.0254;
-    public static double CELSIUS_TO_KELVIN = 273.15;
-    public static double KgPerS_TO_CFM = 2118.88;
-    public static double DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa = 249.09;
-
     //Chart Components
     private XYChart flowChart;
     private XYChart pressureChart;
@@ -62,9 +52,9 @@ public class DashboardView extends JFrame implements SensorObserver {
     //X-axis (time) shared by each graph
     private List<Double> xData;
     //Graph 1: Airflow
-    private List<Double> cfm28Data;
-    private List<Double> cfmOrificeData;
-    private List<Double> massFlowData;
+    private List<Double> flowrateIn28ofH2OData;
+    private List<Double> flowrateAtOrificeData;
+    private List<Double> massFlowrateData;
     //Graph 2: Pressures
     private List<Double> p1Data;
     private List<Double> p2Data;
@@ -88,10 +78,10 @@ public class DashboardView extends JFrame implements SensorObserver {
     private JTextArea commentsArea;
 
     //Logging
-    private JLabel cfm28Label;
-    private JLabel cfmOrificeLabel;
-    private JLabel massFlowRateLabel;
-    private JLabel testStatusLabel;
+    private JLabel flowrateIn28OfH2OLabel;
+    private JLabel flowrateAtOrificeLabel;
+    private JLabel massFlowrateLabel;
+    private JLabel runStatusLabel;
     private JLabel[] sensorStatusLabels;
     private JTextArea activityLog;
 
@@ -100,6 +90,8 @@ public class DashboardView extends JFrame implements SensorObserver {
     private JButton stopButton;
     private JButton exportButton;
     private JButton nextTestButton;
+
+    //Menu items
     private JMenuItem importMenuItem;
     private JMenuItem exportMenuItem;
     private JMenuItem clearMenuItem;
@@ -149,13 +141,13 @@ public class DashboardView extends JFrame implements SensorObserver {
     private void initializeData() {
         //Setup and initialize data lists
         xData = new ArrayList<>();
-        cfm28Data = new ArrayList<>(); cfmOrificeData = new ArrayList<>(); massFlowData = new ArrayList<>();
+        flowrateIn28ofH2OData = new ArrayList<>(); flowrateAtOrificeData = new ArrayList<>(); massFlowrateData = new ArrayList<>();
         p1Data = new ArrayList<>(); p2Data = new ArrayList<>(); p3Data = new ArrayList<>();
         t1Data = new ArrayList<>(); t2Data = new ArrayList<>(); t3Data = new ArrayList<>();
 
         //Add dummy data only for startup
         xData.add(0.0);
-        cfm28Data.add(0.0); cfmOrificeData.add(0.0); massFlowData.add(0.0);
+        flowrateIn28ofH2OData.add(0.0); flowrateAtOrificeData.add(0.0); massFlowrateData.add(0.0);
         p1Data.add(0.0); p2Data.add(0.0); p3Data.add(0.0);
         t1Data.add(0.0); t2Data.add(0.0); t3Data.add(0.0);
         currentOrificeDiameter = 1.00;
@@ -166,8 +158,8 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void initializeCharts() {
         //Graph 1: Airflow
-        flowChart = QuickChart.getChart("Airflow Calculations", "Time (s)", "CFM", "Flowrate at 28\" in H20", xData, cfm28Data);
-        flowChart.addSeries("Flowrate at Orifice", xData, cfmOrificeData);
+        flowChart = QuickChart.getChart("Airflow Calculations", "Time (s)", "CFM", "Flowrate at 28\" in H20", xData, flowrateIn28ofH2OData);
+        flowChart.addSeries("Flowrate at Orifice", xData, flowrateAtOrificeData);
         configureChartStyle(flowChart);
 
         //Graph 2: Pressures
@@ -289,12 +281,12 @@ public class DashboardView extends JFrame implements SensorObserver {
         c.weighty = 0.5;
 
         //Calculated results (light orange boxes)
-        cfm28Label = createStyledLabel("CFM at 28 in H20:", new Color(255, 200, 150));
-        c.gridx = 0; c.gridy = 0; c.gridwidth = 1; panel.add(cfm28Label, c);
-        cfmOrificeLabel = createStyledLabel("CFM at Orifice:", new Color(255, 200, 150));
-        c.gridx = 1; c.gridy = 0; c.gridwidth = 1; panel.add(cfmOrificeLabel, c);
-        massFlowRateLabel = createStyledLabel("Mass Flow Rate:", new Color(255, 200, 150));
-        c.gridx = 2; c.gridy = 0; c.gridwidth = 1; panel.add(massFlowRateLabel, c);
+        flowrateIn28OfH2OLabel = createStyledLabel("CFM at 28 in H20:", new Color(255, 200, 150));
+        c.gridx = 0; c.gridy = 0; c.gridwidth = 1; panel.add(flowrateIn28OfH2OLabel, c);
+        flowrateAtOrificeLabel = createStyledLabel("CFM at Orifice:", new Color(255, 200, 150));
+        c.gridx = 1; c.gridy = 0; c.gridwidth = 1; panel.add(flowrateAtOrificeLabel, c);
+        massFlowrateLabel = createStyledLabel("Mass Flow Rate:", new Color(255, 200, 150));
+        c.gridx = 2; c.gridy = 0; c.gridwidth = 1; panel.add(massFlowrateLabel, c);
 
         //ROW 1: Inputs and Duration
         //Valve lift
@@ -326,13 +318,13 @@ public class DashboardView extends JFrame implements SensorObserver {
         c.gridx = 1; c.gridy = 2; c.gridwidth = 2; c.gridheight = 2; panel.add(new JScrollPane(commentsArea), c); //Spans 2 columns and rows
 
         //ROW 3: Test Status
-        testStatusLabel = new JLabel("Status: STOPPED");
-        testStatusLabel.setOpaque(true);
-        testStatusLabel.setBackground(new Color(220, 220, 240));
-        testStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        testStatusLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-        testStatusLabel.setFont(new Font("Arial", Font.BOLD, 14));
-        c.gridx = 0; c.gridy = 2; c.gridwidth = 1; c.gridheight = 1; panel.add(testStatusLabel, c);
+        runStatusLabel = new JLabel("Status: STOPPED");
+        runStatusLabel.setOpaque(true);
+        runStatusLabel.setBackground(new Color(220, 220, 240));
+        runStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        runStatusLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        runStatusLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        c.gridx = 0; c.gridy = 2; c.gridwidth = 1; c.gridheight = 1; panel.add(runStatusLabel, c);
 
         //ROW 4: Buttons
         //Run test button
@@ -479,13 +471,17 @@ public class DashboardView extends JFrame implements SensorObserver {
         loggingHelpItem.addActionListener(_ -> showLoggingInstructions());
         helpMenu.add(loggingHelpItem);
         //Add "export instructions" menu
-        JMenuItem exportHelpItem = new JMenuItem("Exporting Instructions");
-        exportHelpItem.addActionListener(_ -> showExportingInstructions());
+        JMenuItem exportHelpItem = new JMenuItem("Import/Exporting Instructions");
+        exportHelpItem.addActionListener(_ -> showImportExportInstructions());
         helpMenu.add(exportHelpItem);
         //Add "next test and flow comparison instructions" menu
         JMenuItem nextTestHelpItem  = new JMenuItem("Next Test and Flow Comparison Instructions");
         nextTestHelpItem.addActionListener(_ -> showNextTextInstructions());
         helpMenu.add(nextTestHelpItem);
+        //Add "contact information" menu
+        JMenuItem contactInformationHelpItem = new JMenuItem("Contact Information");
+        contactInformationHelpItem.addActionListener(_ -> showContactInformation());
+        helpMenu.add(contactInformationHelpItem);
 
         return menuBar;
     }
@@ -497,17 +493,16 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void showSetupInstructions() {
         String msg = """
-                HOW TO SETUP FSAE FLOWBENCH TESTER:
                 To setup the software, make sure that the Arduino is connected to the device via a
-                serial cable. You can observe the status of the connection with the status label, or
-                the activity log. All control buttons will be blocked until a USB connection is
+                serial cable. You can observe the status of the connection with the "status label", or
+                the "activity log". All control buttons will be blocked until a USB connection is
                 established and data values are being read. At any point, if the USB is disconnected,
                 the system will automatically stop logging results, and require the user to reconnect
-                the Arduino before continuing. If any issues with setup persist, you can contact
-                "rayyankashif@cmail.carleton.ca".
+                the Arduino before continuing. If any issues with setup persist, you can contact us
+                with the emails found in the "contact information" help menu item.
                 """;
 
-        JOptionPane.showMessageDialog(this, msg, "Setup Instructions", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(this, msg, "HOW TO SETUP SOFTWARE AND HARDWARE", JOptionPane.INFORMATION_MESSAGE);
     }
 
     /**
@@ -515,26 +510,45 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void showLoggingInstructions() {
         String msg = """
-                LOGGING:\n
-                1) Record the sizes of the Valve Lift and Orifice Diameter in the appropiate input fields.\n
-                2) Set the duration of each test (in seconds) in the Testing Duration input field.\n
-                3) Once the above steps are completed and you wish to begin recording, hit the RUN button. The system will record your values for the length of the Testing Duration.\n
-                \n
-                After each run, you can write any comments about the run in the Comments box.\n
-                If the recording needs to be stopped before the lenght of the Testing Duration has passed, you can press the STOP button to end the current test.
-        """;
-        JOptionPane.showMessageDialog(this, msg, "Logging Instructions", JOptionPane.INFORMATION_MESSAGE);
+                On the control panel, there are 6 green labels, and 3 orange labels. The green labels
+                are live sensor readings from the Arduino, while the orange labels are calculated
+                values based off of the current inputs and sensor readings. These values are what will
+                be logged, and what are graphed at the bottom.
+                
+                To begin recording sensor readings and calculations:
+                1) Select the sizes of the "valve lift" and "orifice diameter" in the appropriate input
+                   fields.
+                2) Set the duration of each test (in seconds) in the "testing duration" input field.
+                3) Once the above steps are completed and you wish to begin recording, hit the "run"
+                   button. The system will record your values for the length of the testing duration.
+                
+                After each run, you can write any comments about the run in the "comments about
+                displayed run" box. If the recording needs to be stopped before the length of the
+                "testing duration" has passed, you can press the "stop" button to end the current test.
+                The bottom panel will show you your graphed readings. Use the "test" and "run" dropdown
+                menus to view all your previous logs. You can then adjust the comments of those
+                previous runs if needed.
+                """;
+        JOptionPane.showMessageDialog(this, msg, "HOW TO LOG AND VIEW DATA", JOptionPane.INFORMATION_MESSAGE);
     }
 
     /**
      * Helper method for displaying an information box detailing how exporting logged data and saving graphs works.
      */
-    private void showExportingInstructions() {
+    private void showImportExportInstructions() {
         String msg = """
-                EXPORTING:\n
-                To export the data of your Tests, press the Export CSV button. This will allow you to save the data of your various tests on your computer as a CSV file.
-        """;
-        JOptionPane.showMessageDialog(this, msg, "Exporting Instructions", JOptionPane.INFORMATION_MESSAGE);
+                To export all your collected data from your various tests, press the "export CSV" button
+                found either in the control panel, or in the top menu. This will allow you to save the
+                data of your various tests on your computer as a CSV file. You can then use a USB or
+                online file sharing platform to transfer the CSV file to another device. Right clicking
+                on one of the displayed graphs also allows you to save and export it.
+                
+                To import a CSV file (useful for continuing saved progress), press the "import CSV" button
+                in the top control menu. Make sure that the CSV file is in the exact format of an exported
+                file. Any altercations to the header and structure could result in failure to import
+                or corrupted data values.
+                """;
+        JOptionPane.showMessageDialog(this, msg, "HOW TO IMPORT/EXPORTING TESTS", JOptionPane.INFORMATION_MESSAGE);
     }
 
     /**
@@ -542,11 +556,34 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void showNextTextInstructions() {
         String msg = """
-                NEXT TEST:\n
-                To start a new test, press the Next Test (Commit New Series) button. This will create a new test session with no runs recorded.\n
-                Your old tests will still be available and can be accessed by using the Select Test Series dropdown menu.
-        """;
-        JOptionPane.showMessageDialog(this, msg, "Next Test and Flow Comparison Instructions", JOptionPane.INFORMATION_MESSAGE);
+                A "run" is a collection of sensor readings and calculations over a given test duration,
+                with a given valve lift and orifice diameter. A "test series" is a collection of runs for a
+                certain system (could be one type of engine configuration). A flow comparison chart
+                compares each completed test against each other, using a calculated value from each run
+                under the respective test as a data point. As you log more runs, and complete more tests,
+                the final flow comparison graph will populate.
+               
+                To start a new test, press the "next test" button. This will allow you to name your current
+                completed test, and then create a new test session with no runs recorded. Your old tests will
+                still be available and can be accessed by using the "select test series" dropdown menu. In
+                your CSV file, each test will show their respective name, and the runs that fall under them.
+                """;
+        JOptionPane.showMessageDialog(this, msg, "HOW TO MOVE ONTO THE NEXT TEST (FLOW COMPARISON CHART CREATION)", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    /**
+     * Helper method for displaying an information box detailing contact information.
+     */
+    private void showContactInformation() {
+        String msg = """
+                Main Developer and Project Overhead: Rayyan Kashif
+                University Email: rayyankashif@cmail.carleton.ca
+                Personal Email: rayyan.kashif.ca@gmail.com
+                \s
+                Side Developer: Abdullah Khan
+                Personal Email: abkhan0517@gmail.com
+                \s""";
+        JOptionPane.showMessageDialog(this, msg, "CONTACT INFORMATION", JOptionPane.INFORMATION_MESSAGE);
     }
 
     // === LOGIC METHODS ===
@@ -591,12 +628,12 @@ public class DashboardView extends JFrame implements SensorObserver {
 
         //Update status label
         if (connected) {
-            testStatusLabel.setText("Status: DEVICE READY");
-            testStatusLabel.setBackground(Color.GREEN);
+            runStatusLabel.setText("Status: DEVICE READY");
+            runStatusLabel.setBackground(Color.GREEN);
             logMessage("Connection established. Controls enabled.");
         } else {
-            testStatusLabel.setText("Status: WAITING FOR DEVICE...");
-            testStatusLabel.setBackground(Color.ORANGE);
+            runStatusLabel.setText("Status: WAITING FOR DEVICE...");
+            runStatusLabel.setBackground(Color.ORANGE);
             logMessage("Waiting for Arduino connection...");
         }
     }
@@ -623,7 +660,7 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void resetDataLists() {
         xData.clear();
-        cfm28Data.clear(); cfmOrificeData.clear(); massFlowData.clear();
+        flowrateIn28ofH2OData.clear(); flowrateAtOrificeData.clear(); massFlowrateData.clear();
         p1Data.clear(); p2Data.clear(); p3Data.clear();
         t1Data.clear(); t2Data.clear(); t3Data.clear();
     }
@@ -784,7 +821,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         p1Data.add(currentP1); p2Data.add(currentP2); p3Data.add(currentP3);
 
         //Use previously calculated values
-        cfm28Data.add(flowData.cfm28()); cfmOrificeData.add(flowData.cfmOrifice()); massFlowData.add(flowData.massFlow());
+        flowrateIn28ofH2OData.add(flowData.flowrateIn28OfH2O()); flowrateAtOrificeData.add(flowData.flowrateAtOrifice()); massFlowrateData.add(flowData.massFlowrate());
     }
 
     /**
@@ -951,28 +988,15 @@ public class DashboardView extends JFrame implements SensorObserver {
      * @return A package of calculated physics values to prevent recalculations
      */
     private FlowResult performRealTimeCalculations() {
-        //Safety check
-        if (currentP1 <= 0 || currentP2 <= 0 || currentOrificeDiameter <= 0) return new FlowResult(0.0, 0.0, 0.0);
-
-        //Calculate fluid density (rho)
-        double rho = calculateRho(currentP2, currentT1);
-
-        //Calculate mass flow rate
-        double massFlowrate = calculateMassFlowRate(currentP1, rho, currentOrificeDiameter);
-
-        //Calculate actual volumetric flow (CFM)
-        double cfmOrifice = calculateCFMatOrifice(massFlowrate, rho);
-
-        //Calculate corrected flow (CFM @ 28" in H20)
-        double cfm28 = calculateCFMat28inH20(cfmOrifice, currentP1);
+        //Create package of calculated physics values
+        FlowResult results = FlowResult.calculate(currentP1, currentP2, currentT1, currentOrificeDiameter);
 
         //Update result labels immediately
-        cfm28Label.setText(String.format("Flowrate at 28\" in H20: %.2f CFM", cfm28));
-        cfmOrificeLabel.setText(String.format("Flowrate at Orifice: %.2f CFM", cfmOrifice));
-        massFlowRateLabel.setText(String.format("Mass Flowrate: %.4f kg/s", massFlowrate));
+        flowrateIn28OfH2OLabel.setText(String.format("Flowrate at 28\" in H20: %.2f CFM", results.flowrateIn28OfH2O()));
+        flowrateAtOrificeLabel.setText(String.format("Flowrate at Orifice: %.2f CFM", results.flowrateAtOrifice()));
+        massFlowrateLabel.setText(String.format("Mass Flowrate: %.4f kg/s", results.massFlowrate()));
 
-        //Return package of calculated values
-        return new FlowResult(cfmOrifice, massFlowrate, cfm28);
+        return results;
     }
 
     /**
@@ -1024,8 +1048,8 @@ public class DashboardView extends JFrame implements SensorObserver {
             toggleInputs(false);
             currentlyViewedRun = null; //Detach the comment box
             commentsArea.setText("");
-            testStatusLabel.setText("Status: RUNNING");
-            testStatusLabel.setBackground(Color.GREEN);
+            runStatusLabel.setText("Status: RUNNING");
+            runStatusLabel.setBackground(Color.GREEN);
 
             //Log action
             logMessage("Started Run #" + (sessionRuns.size() + 1) + " (Lift: " + lift + ", Orifice: " + orifice + ", Duration: " + seconds + "s)");
@@ -1051,17 +1075,17 @@ public class DashboardView extends JFrame implements SensorObserver {
         //Update UI
         isLogging = false;
         toggleInputs(true);
-        testStatusLabel.setText("Status: STOPPED. Data Saved");
-        testStatusLabel.setBackground(new Color(220, 220, 240));
+        runStatusLabel.setText("Status: STOPPED. Data Saved");
+        runStatusLabel.setBackground(new Color(220, 220, 240));
 
         //Generate graphs for the run that just finished
-        refreshChartsWithData(xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData);
+        refreshChartsWithData(xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, flowrateIn28ofH2OData, flowrateAtOrificeData);
 
         //Clean comment for CSV
         String safeComment = commentsArea.getText().replace("\n", " ").replace(",", ";").trim();
 
         //Create a snapshot of the current run and add to session history
-        RunSnapshot run = new RunSnapshot(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, cfm28Data, cfmOrificeData, massFlowData, safeComment);
+        RunSnapshot run = new RunSnapshot(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, flowrateIn28ofH2OData, flowrateAtOrificeData, massFlowrateData, safeComment);
         sessionRuns.add(run);
 
         //Update UI
@@ -1131,7 +1155,7 @@ public class DashboardView extends JFrame implements SensorObserver {
                 writer.flush();
 
                 //Inform user
-                JOptionPane.showMessageDialog(this, "Export Successful!\nSession cleared.");
+                JOptionPane.showMessageDialog(this, "Export Successful!");
                 logMessage("Exported " + sessionRuns.size() + " runs to: " + file.getName());
             }
             catch (IOException e) {
@@ -1198,7 +1222,7 @@ public class DashboardView extends JFrame implements SensorObserver {
             try (BufferedReader br = new BufferedReader(new FileReader(file))) {
                 String line = br.readLine();
                 //Check if the header line follows the correct format
-                if (line == null || !line.contains("Series Name")) {
+                if (line == null || !line.equals("Series Name,Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice (CFM),Mass Flowrate (kg/s),Comments")) {
                     JOptionPane.showMessageDialog(this, "Invalid CSV format! Header mismatch.", "ERROR!", JOptionPane.ERROR_MESSAGE);
                     return;
                 }
@@ -1314,7 +1338,7 @@ public class DashboardView extends JFrame implements SensorObserver {
 
     /**
      * Sends sensor updates to GUI labels.
-     * Performs calculations for CFM and Flow Rate labels.
+     * Performs calculations for 3  and Flow Rate labels.
      * Records all data values in data history links.
      * @param sensorID The ID of the sensor currently being read
      * @param value The value of the sensor currently being read
@@ -1337,96 +1361,12 @@ public class DashboardView extends JFrame implements SensorObserver {
                 double elapsed = (now - startTime) / 1000.0;
 
                 //Status sensor countdown logic
-                testStatusLabel.setText(String.format("Remaining time: %.1f seconds", Math.max(0, targetDuration - elapsed)));
+                runStatusLabel.setText(String.format("Remaining time: %.1f seconds", Math.max(0, targetDuration - elapsed)));
 
                 //If the timer ran out without any interrupts, communicate that in the activity log
                 if (elapsed >= targetDuration) stopLogging(false);
                 else recordDataPoint(elapsed, results);
             }
         });
-    }
-
-    // === MATH HELPER METHODS ===
-
-    /**
-     * Helper method for calculating the beta ratio for the orifice plate.
-     * @param dInches The current orifice diameter in inches
-     * @return The dimensionless beta ratio
-     */
-    private double calculateBeta(double dInches) {
-        return dInches / PIPE_INNER_DIAMETER;
-    }
-
-    /**
-     * Helper method for calculating the air density based on the current absolute pressure and temperature.
-     * @param pAbsHPa The current absolute pressure (P2) in hPa
-     * @param tempC The current temperature (T1) in C
-     * @return The current calculated air density in kg/m^3
-     */
-    private double calculateRho(double pAbsHPa, double tempC) {
-        //Unit conversions
-        double pAbsPa = pAbsHPa * 100;
-        double tempK = tempC + CELSIUS_TO_KELVIN;
-
-        // Avoid divide by 0
-        if (tempK == 0) return 0;
-
-        //Formula: rho = p_1 / (R * T_1)
-        return pAbsPa / (SPECIFIC_GAS_CONSTANT * tempK);
-    }
-
-    /**
-     * Helper method for calculating the current mass flow rate using the standard orifice equation.
-     * @param deltaPHPa The current differential pressure (P1) in hPa
-     * @param rho The air density in kg/m^3
-     * @param dInches The current orifice diameter in inches
-     * @return The current mass flow rate in kg/s
-     */
-    private double calculateMassFlowRate(double deltaPHPa, double rho, double dInches) {
-        //Unit conversions
-        double deltaPPa = deltaPHPa * 100.0;
-        double dMeters = dInches * INCHES_TO_METERS;
-
-        //Geometry
-        double beta = calculateBeta(dInches);
-        double area = (Math.PI / 4.0) * Math.pow(dMeters, 2.0);
-
-        //Formula: m_dot = (Cd * E * A * sqrt(2 * rho * dP)) / sqrt(1 - beta^4)
-        double numerator = DISCHARGE_COEFFICIENT * EXPANSIBILITY_FACTOR * area * Math.sqrt(2 * rho * deltaPPa);
-        double denominator = Math.sqrt(1 - Math.pow(beta, 4));
-        return numerator / denominator;
-    }
-
-    /**
-     * Helper method for converting the current mass flow rate to the current volumetric flow (CFM) at the measured density.
-     * @param massFlowKgPerS The current mass flow rate in kg/s
-     * @param rho The air density in kg/m^3
-     * @return The current volumetric flow in CFM
-     */
-    private double calculateCFMatOrifice(double massFlowKgPerS, double rho) {
-        //Avoid divide by 0
-        if (rho <= 0) return 0.0;
-
-        //Unit conversions
-        double volFlowM3perS = massFlowKgPerS / rho;
-        return volFlowM3perS * KgPerS_TO_CFM;
-    }
-
-    /**
-     * Helper method for correcting the actual CFM to a standard pressure drop of 28 inches of water.
-     * @param cfmActual The current actual calculated CFM
-     * @param deltaPHPa The current differential pressure (P1) in hPa
-     * @return The corrected current flow in CFM at 28" in H20
-     */
-    private double calculateCFMat28inH20(double cfmActual, double deltaPHPa) {
-        //Unit conversions
-        double targetPressurePa = 28.0 * DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa;
-        double measuredPressurePa = deltaPHPa * 100.0;
-
-        //Avoid divide by 0
-        if (measuredPressurePa <= 0) return 0.0;
-
-        //Formula: Q_28 = Q_actual * sqrt(TargetP / MeasuredP)
-        return cfmActual * Math.sqrt(targetPressurePa / measuredPressurePa);
     }
 }

@@ -15,7 +15,7 @@ public class RunSnapshot {
     public RunSnapshot(Double valveLift, Double orificeDiameter,
                        List<Double> time, List<Double> p1, List<Double> p2, List<Double> p3,
                        List<Double> t1, List<Double> t2, List<Double> t3,
-                       List<Double> cfmIn28OfH2O, List<Double> cfmAtOrifice, List<Double> massFlowrate, String comment)
+                       List<Double> flowrateIn28OfH2O, List<Double> flowrateAtOrifice, List<Double> massFlowrate, String comment)
     {
         this.valveLift = valveLift;
         this.orificeDiameter = orificeDiameter;
@@ -23,7 +23,7 @@ public class RunSnapshot {
         this.time = new ArrayList<>(time);
         this.p1 = new ArrayList<>(p1); this.p2 = new ArrayList<>(p2); this.p3 = new ArrayList<>(p3);
         this.t1 = new ArrayList<>(t1); this.t2 = new ArrayList<>(t2); this.t3 = new ArrayList<>(t3);
-        this.cfmIn28OfH2O = new ArrayList<>(cfmIn28OfH2O); this.cfmAtOrifice = new ArrayList<>(cfmAtOrifice); this.massFlowrate = new ArrayList<>(massFlowrate);
+        this.cfmIn28OfH2O = new ArrayList<>(flowrateIn28OfH2O); this.cfmAtOrifice = new ArrayList<>(flowrateAtOrifice); this.massFlowrate = new ArrayList<>(massFlowrate);
         this.comment = comment;
     }
 
