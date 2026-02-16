@@ -90,6 +90,8 @@ public class DashboardView extends JFrame implements SensorObserver {
     private JButton stopButton;
     private JButton exportButton;
     private JButton nextTestButton;
+    private JButton redoRunButton;
+    private JButton deleteRunButton;
 
     //Menu items
     private JMenuItem importMenuItem;
@@ -98,6 +100,7 @@ public class DashboardView extends JFrame implements SensorObserver {
     private JMenuItem runMenuItem;
     private JMenuItem stopMenuItem;
     private JMenuItem nextTestMenuItem;
+    private JMenuItem manageRunsMenuItem;
 
     //Logic State
     private boolean isLogging = false;
@@ -248,6 +251,19 @@ public class DashboardView extends JFrame implements SensorObserver {
         runSelector.setFont(new Font("Arial", Font.BOLD, 14));
         runSelector.addActionListener(_ -> onRunSelected());
 
+        //Create redo run button
+        redoRunButton = new JButton("Redo Displayed Run");
+        redoRunButton.setBackground(new Color(255, 200, 100)); //Orange
+        redoRunButton.addActionListener(_ -> redoDisplayedRun());
+        redoRunButton.setEnabled(false); //Disable on startup
+
+        //Create delete run button
+        deleteRunButton = new JButton("Delete Displayed Run");
+        deleteRunButton.setBackground(new Color(255, 100, 100)); //Red
+        deleteRunButton.setForeground(Color.white);
+        deleteRunButton.addActionListener(_ -> deleteDisplayedRun());
+        deleteRunButton.setEnabled(false); //Disable on startup
+
         //Create graph selector dropdown menu
         graphSelector = new JComboBox<>(new String[]{"Airflow Calculations", "Pressure Sensors", "Temperature Sensors", "Flow Comparison"});
         graphSelector.setFont(new Font("Arial", Font.BOLD, 14));
@@ -259,6 +275,9 @@ public class DashboardView extends JFrame implements SensorObserver {
         header.add(Box.createHorizontalStrut(20));
         header.add(new JLabel("Select Run:"));
         header.add(runSelector);
+        header.add(Box.createHorizontalStrut(10));
+        header.add(redoRunButton);
+        header.add(deleteRunButton);
         header.add(Box.createHorizontalStrut(20));
         header.add(new JLabel("Select Graph View:"));
         header.add(graphSelector);
@@ -303,7 +322,7 @@ public class DashboardView extends JFrame implements SensorObserver {
                 assert selected != null;
                 currentOrificeDiameter = Double.parseDouble(selected);
             }
-            catch (Exception ex) { ex.printStackTrace(); }
+            catch (Exception e) { logMessage("ERROR! Failed to read orifice diameter input: " + e.getMessage()); }
         });
         c.gridx = 1; c.gridy = 1; panel.add(createInputSubPanel("Orifice Diameter (\"):", orificeInput), c);
         //Testing duration
@@ -457,6 +476,10 @@ public class DashboardView extends JFrame implements SensorObserver {
         nextTestMenuItem = new JMenuItem("Next Test Series");
         nextTestMenuItem.addActionListener(_ -> commitSeries());
         runMenu.add(nextTestMenuItem);
+        //Add "manage runs" button
+        manageRunsMenuItem = new JMenuItem("Manage Runs (Redo/Delete)");
+        manageRunsMenuItem.addActionListener(_ -> showRunManagerDialog());
+        runMenu.add(manageRunsMenuItem);
 
         //HELP MENU
         //Setup menu header
@@ -527,7 +550,17 @@ public class DashboardView extends JFrame implements SensorObserver {
                 "testing duration" has passed, you can press the "stop" button to end the current test.
                 The bottom panel will show you your graphed readings. Use the "test" and "run" dropdown
                 menus to view all your previous logs. You can then adjust the comments of those
-                previous runs if needed.
+                previous runs if needed. Pressing the "redo displayed run" or "delete displayed run" buttons
+                will let you do the respective action to the currently selected run. You can also navigate
+                to the "manage runs" menu item under the top "controls" menu.
+                
+                To redo a run:
+                1) Either select the run to redo through the top menu, or graphing panel.
+                2) Press the redo button. This will set your viewed run to that currently selected run, and
+                   adjust your input values to match the old run values. You can then adjust those input
+                   values accordingly.
+                3) Once you've finalized your input values, press the "run" button to begin logging. It will
+                   save those results to your currently selected test series.
                 """;
         JOptionPane.showMessageDialog(this, msg, "HOW TO LOG AND VIEW DATA", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -537,16 +570,21 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private void showImportExportInstructions() {
         String msg = """
-                To export all your collected data from your various tests, press the "export CSV" button
-                found either in the control panel, or in the top menu. This will allow you to save the
-                data of your various tests on your computer as a CSV file. You can then use a USB or
-                online file sharing platform to transfer the CSV file to another device. Right clicking
-                on one of the displayed graphs also allows you to save and export it.
+                When you export your data, you will create 2 CSV files: a complete set of the raw data,
+                and the calculated values used for the final flow comparison graph. This second file is
+                created at the same location as your first file, copying the name of the first file with
+                "_FlowComparison" trailing the name.
+                
+                To export your files, press the "export CSV" button found either in the control panel, or
+                in the top menu. This will allow you to save the data of your various tests on your computer
+                as CSV files. You can then use a USB or online file sharing platform to transfer the CSV
+                files to another device. If you want to save one of the formed graphs, you can right click
+                on it and either choose to "save as" or "export".
                 
                 To import a CSV file (useful for continuing saved progress), press the "import CSV" button
-                in the top control menu. Make sure that the CSV file is in the exact format of an exported
-                file. Any altercations to the header and structure could result in failure to import
-                or corrupted data values.
+                in the top control menu. Make sure that the CSV file you select is the raw data file and
+                follows the exact formatting of an exported raw data file. Any altercations to the header
+                and structure could result in failure to import or corrupted data values.
                 """;
         JOptionPane.showMessageDialog(this, msg, "HOW TO IMPORT/EXPORTING TESTS", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -566,7 +604,9 @@ public class DashboardView extends JFrame implements SensorObserver {
                 To start a new test, press the "next test" button. This will allow you to name your current
                 completed test, and then create a new test session with no runs recorded. Your old tests will
                 still be available and can be accessed by using the "select test series" dropdown menu. In
-                your CSV file, each test will show their respective name, and the runs that fall under them.
+                your raw data CSV file, each test will show their respective name, and the runs that fall
+                under them. The flow comparison CSV file will show all the data points used for generating the
+                graph. Check the "import/export tests" help menu item for more details about these files.
                 """;
         JOptionPane.showMessageDialog(this, msg, "HOW TO MOVE ONTO THE NEXT TEST (FLOW COMPARISON CHART CREATION)", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -613,6 +653,9 @@ public class DashboardView extends JFrame implements SensorObserver {
         runButton.setEnabled(connected);
         stopButton.setEnabled(false); //Always disabled until a run actually starts
         nextTestButton.setEnabled(connected);
+        boolean hasRun = (connected && currentlyViewedRun != null);
+        deleteRunButton.setEnabled(hasRun);
+        redoRunButton.setEnabled(hasRun);
 
         //Toggle inputs
         valveLiftInput.setEnabled(connected);
@@ -712,6 +755,9 @@ public class DashboardView extends JFrame implements SensorObserver {
             refreshChartsForRun(currentlyViewedRun);
         }
         isUpdatingUI = false;
+
+        //Update button states based on new selection
+        toggleInputs(!isLogging);
     }
 
     /**
@@ -728,6 +774,9 @@ public class DashboardView extends JFrame implements SensorObserver {
         //If there are no recorded runs, do nothing
         if (runIndex == -1 || runSelector.getItemAt(0).equals("No Runs Recorded")) {
             currentlyViewedRun = null;
+
+            //Ensure buttons turn off
+            toggleInputs(!isLogging);
             return;
         }
 
@@ -743,6 +792,9 @@ public class DashboardView extends JFrame implements SensorObserver {
 
             refreshChartsForRun(currentlyViewedRun);
         }
+
+        //Update button states based on new selection
+        toggleInputs(!isLogging);
     }
 
     /**
@@ -920,15 +972,228 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
+     * Method for determining the selected run for redoing.
+     */
+    private void redoDisplayedRun() {
+        int seriesIndex = seriesSelector.getSelectedIndex();
+        int runIndex = runSelector.getSelectedIndex();
+        if (runIndex != -1 && !runSelector.getItemAt(0).equals("No Runs Recorded")) redoRun(seriesIndex, runIndex);
+    }
+
+    /**
+     * Method for determining the selected run for deletion.
+     */
+    private void deleteDisplayedRun() {
+        int seriesIndex = seriesSelector.getSelectedIndex();
+        int runIndex = runSelector.getSelectedIndex();
+        if (runIndex != -1 && !runSelector.getItemAt(0).equals("No Runs Recorded")) deleteRun(seriesIndex, runIndex);
+    }
+
+    /**
+     * Method for redoing a specific run in memory.
+     * Copies old run parameters, applies them to the input, and deletes the old run.
+     * @param seriesIndex The index of the test the run belongs to, in the list of tests
+     * @param runIndex The index of the run in the respective test's run collection
+     */
+    private void redoRun(int seriesIndex, int runIndex) {
+        //Prompt user to confirm redo
+        int confirm = JOptionPane.showConfirmDialog(this, "This will delete the selected run and setup the inputs to record it again.\nMake sure the system being tested matches the inputted specifications.\nProceed?", "CONFIRM REDO", JOptionPane.YES_NO_OPTION);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
+        //Save series name before deletion for logging
+        String seriesName = (seriesIndex <= 0) ? "'current unsaved session'" : archivedSeries.get(seriesIndex - 1).name();
+
+        //Get the collection of runs given the series index
+        List<RunSnapshot> targetList = (seriesIndex <= 0) ? sessionRuns : archivedSeries.get(seriesIndex - 1).runs();
+
+        //Get the specific run from the collection of runs
+        if (runIndex >= 0 && runIndex < targetList.size()) {
+            RunSnapshot runToRedo = targetList.get(runIndex);
+
+            //Pre-fill inputs with old data
+            valveLiftInput.setText(String.valueOf(runToRedo.getValveLift()));
+            for (int i = 0; i < orificeInput.getItemCount(); i++) {
+                if (Double.parseDouble(orificeInput.getItemAt(i)) == runToRedo.getOrificeDiameter()) {
+                    orificeInput.setSelectedIndex(i);
+                    break;
+                }
+            }
+            if (!runToRedo.getTime().isEmpty()) {
+                double duration = Math.round((runToRedo.getTime().getLast() + 0.1) * 10.0) / 10.0; //Compensate for missing final tick and round to the nearest decimal
+                durationInput.setText(String.format("%.1f", duration));
+            }
+
+            //Delete old run
+            targetList.remove(runIndex);
+
+            //Remove series if no runs are left
+            if (targetList.isEmpty() && seriesIndex > 0) {
+                archivedSeries.remove(seriesIndex - 1);
+                isUpdatingUI = true;
+                seriesSelector.removeItemAt(seriesIndex);
+                isUpdatingUI = false;
+                seriesSelector.setSelectedIndex(0); // Only jump to 0 if the series was entirely deleted
+            }
+            else {
+                //Synchronize the main UI dropdown with the dialog's choice
+                if (seriesSelector.getSelectedIndex() != seriesIndex) seriesSelector.setSelectedIndex(seriesIndex);
+                else  onSeriesSelected(); //Refresh the list if we already have it
+            }
+
+            //Update flow comparison graph
+            updateComparisonGraph();
+
+            //Inform user
+            logMessage("Prepared to redo run #" + (runIndex + 1) + " of series " + seriesName + ".");
+            JOptionPane.showMessageDialog(this, "Inputs configured for redo. Press the run button when ready.");
+        }
+    }
+
+    /**
+     * Method for deleting a specific run from memory.
+     * @param seriesIndex The index of the test the run belongs to, in the list of tests
+     * @param runIndex The index of the run in the respective test's run collection
+     */
+    private void deleteRun(int seriesIndex, int runIndex) {
+        //Prompt user to confirm deletion
+        int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to delete this run?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
+        //Save series name before deletion for logging
+        String seriesName = (seriesIndex <= 0) ? "'current unsaved session'" : archivedSeries.get(seriesIndex - 1).name();
+
+        //Get the collection of runs given the series index
+        List<RunSnapshot> targetList = (seriesIndex <= 0) ? sessionRuns : archivedSeries.get(seriesIndex - 1).runs();
+
+        //Get the specific run from the collection of runs
+        if (runIndex >= 0 && runIndex < targetList.size()) {
+            targetList.remove(runIndex);
+
+            //Delete the whole series if no runs are left
+            if (targetList.isEmpty() && seriesIndex > 0) {
+                archivedSeries.remove(seriesIndex - 1);
+
+                //Remove from dropdown menu
+                isUpdatingUI = true;
+                seriesSelector.removeItemAt(seriesIndex);
+                isUpdatingUI = false;
+
+                // Jump back to the current session
+                seriesSelector.setSelectedIndex(0);
+            }
+            else {
+                    //Synchronize the main UI dropdown with the dialog's choice
+                    if (seriesSelector.getSelectedIndex() != seriesIndex) seriesSelector.setSelectedIndex(seriesIndex);
+                    else  onSeriesSelected(); //Refresh the list if we already have it
+                }
+
+            //Update comparison graph
+            updateComparisonGraph();
+
+            //Inform user
+            JOptionPane.showMessageDialog(this, "Run deletion successful!");
+            logMessage("Deleted run #" + (runIndex + 1) + " of series " + seriesName + ".");
+        }
+    }
+
+    /**
+     * Method to create a floating dialog window to manage all recorded runs.
+     */
+    private void showRunManagerDialog() {
+        //Create dialog box
+        JDialog dialog = new JDialog(this, "Manage Runs", true);
+        dialog.setSize(450, 300);
+        dialog.setLayout(new BorderLayout(10, 10));
+        dialog.setLocationRelativeTo(this);
+
+        //Create series selector
+        JPanel topPanel = new JPanel(new FlowLayout());
+        topPanel.add(new JLabel("Select Test Series:"));
+        JComboBox<String> dialogSeriesSelector = new JComboBox<>();
+        dialogSeriesSelector.addItem("Current Unsaved Session");
+        for (TestSeries ts : archivedSeries) dialogSeriesSelector.addItem(ts.name());
+        topPanel.add(dialogSeriesSelector);
+        dialog.add(topPanel, BorderLayout.NORTH);
+
+        //Create selectable list of runs
+        DefaultListModel<String> listModel = new DefaultListModel<>();
+        JList<String> runList = new JList<>(listModel);
+        runList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        dialog.add(new JScrollPane(runList), BorderLayout.CENTER);
+
+        //Populate list action
+        Runnable populateList = () -> {
+            listModel.clear();
+            int idx = dialogSeriesSelector.getSelectedIndex();
+            List<RunSnapshot> runs = (idx <= 0) ? sessionRuns : archivedSeries.get(idx - 1).runs();
+            for (int i = 0; i < runs.size(); i++) {
+                RunSnapshot run = runs.get(i);
+                listModel.addElement("Run #" + (i + 1) + "  |  Lift: " + run.getValveLift() + "\"  |  Orifice: " + run.getOrificeDiameter() + "\"");
+            }
+        };
+        dialogSeriesSelector.addActionListener(_ -> populateList.run());
+        populateList.run(); //Initial population
+
+        //CREATE ACTION BUTTONS
+        JPanel bottomPanel = getJPanel(runList, dialog, dialogSeriesSelector);
+        dialog.add(bottomPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+
+    /**
+     * Helper method for creating button panel for the "manage run" dialog box.
+     * @param runList The list of runs for the selected test series
+     * @param dialog The dialog box object
+     * @param dialogSeriesSelector The dialog box series selector object
+     * @return The constructed button panel for the dialog box
+     */
+    private JPanel getJPanel(JList<String> runList, JDialog dialog, JComboBox<String> dialogSeriesSelector) {
+        JPanel bottomPanel = new JPanel(new FlowLayout());
+        JButton dialogRedoButton = new JButton("Redo Run");
+        JButton dialogDeleteButton = new JButton("Delete Run");
+        JButton dialogCloseButton = new JButton("Close");
+        //Redo button
+        dialogRedoButton.addActionListener(_ -> {
+            int runIdx = runList.getSelectedIndex();
+            if (runIdx != -1) {
+                dialog.dispose(); // Close window then perform action
+                redoRun(dialogSeriesSelector.getSelectedIndex(), runIdx);
+            }
+        });
+        //Delete button
+        dialogDeleteButton.addActionListener(_ -> {
+            int runIdx = runList.getSelectedIndex();
+            if (runIdx != -1) {
+                dialog.dispose();
+                deleteRun(dialogSeriesSelector.getSelectedIndex(), runIdx);
+            }
+        });
+        //Close button
+        dialogCloseButton.addActionListener(_ -> dialog.dispose());
+
+        //Add buttons and finalize
+        bottomPanel.add(dialogRedoButton);
+        bottomPanel.add(dialogDeleteButton);
+        bottomPanel.add(dialogCloseButton);
+        return bottomPanel;
+    }
+
+    /**
      * Helper method used to quickly toggle on/off all button functionality for trial running.
      * @param enabled True if the buttons should be on, and false if the buttons should be off
      */
     private void toggleInputs(boolean enabled) {
+        //Only enable certain items if there is a run currently selected
+        boolean hasRun = (enabled && currentlyViewedRun != null);
+
         //Toggle buttons
         runButton.setEnabled(enabled);
         stopButton.setEnabled(!enabled);
         exportButton.setEnabled(enabled);
         nextTestMenuItem.setEnabled(enabled);
+        redoRunButton.setEnabled(hasRun);
+        deleteRunButton.setEnabled(hasRun);
+
 
         //Toggle inputs
         valveLiftInput.setEnabled(enabled);
@@ -944,6 +1209,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         exportMenuItem.setEnabled(enabled);
         importMenuItem.setEnabled(enabled);
         clearMenuItem.setEnabled(enabled);
+        manageRunsMenuItem.setEnabled(enabled);
     }
 
     /**
@@ -1007,19 +1273,6 @@ public class DashboardView extends JFrame implements SensorObserver {
         //Save the comment from whatever run is being looked at currently
         saveCurrentComment();
 
-        //Force dropdown back to the current session if they were looking at old data
-        if (seriesSelector.getSelectedIndex() != 0) {
-            isUpdatingUI = true;
-            seriesSelector.setSelectedIndex(0);
-            runSelector.removeAllItems();
-            if (sessionRuns.isEmpty()) runSelector.addItem("No Runs Recorded");
-            else {
-                for (int i = 0; i < sessionRuns.size(); i++) runSelector.addItem("Run #" + i + 1);
-                runSelector.setSelectedIndex(sessionRuns.size() - 1);
-            }
-            isUpdatingUI = false;
-        }
-
         try {
             //Validate duration
             double seconds = Double.parseDouble(durationInput.getText());
@@ -1074,7 +1327,6 @@ public class DashboardView extends JFrame implements SensorObserver {
 
         //Update UI
         isLogging = false;
-        toggleInputs(true);
         runStatusLabel.setText("Status: STOPPED. Data Saved");
         runStatusLabel.setBackground(new Color(220, 220, 240));
 
@@ -1086,35 +1338,49 @@ public class DashboardView extends JFrame implements SensorObserver {
 
         //Create a snapshot of the current run and add to session history
         RunSnapshot run = new RunSnapshot(currentValveLift, currentOrificeDiameter, xData, p1Data, p2Data, p3Data, t1Data, t2Data, t3Data, flowrateIn28ofH2OData, flowrateAtOrificeData, massFlowrateData, safeComment);
-        sessionRuns.add(run);
+
+        //Add the run to the currently selected series
+        int activeSeriesIdx = seriesSelector.getSelectedIndex();
+        List<RunSnapshot> targetList = (activeSeriesIdx <= 0) ? sessionRuns : archivedSeries.get(activeSeriesIdx - 1).runs();
+        targetList.add(run);
 
         //Update UI
         isUpdatingUI = true;
-        if (runSelector.getItemAt(0).equals("No Runs Recorded")) runSelector.removeAllItems();
-        runSelector.addItem("Run #" + sessionRuns.size());
-        runSelector.setSelectedIndex(runSelector.getItemCount() - 1);
+        runSelector.removeAllItems();
+        for (int i = 0; i < targetList.size(); i++) {
+            runSelector.addItem("Run #" + (i + 1));
+        }
+        runSelector.setSelectedIndex(targetList.size() - 1);
         currentlyViewedRun = run;
         isUpdatingUI = false;
+
+        //Update comparison graph if archived series was modified
+        if (activeSeriesIdx > 0) updateComparisonGraph();
 
         //Log action depending on if the run was interrupted or not
         if (manualStop) logMessage("Run #" + sessionRuns.size() + " STOPPED by user after " + String.format("%.1f", actualDuration) + "s.");
         else logMessage("Run #" + sessionRuns.size() + " COMPLETED (" + targetDuration + "s).");
 
-        //Update status to show how many runs are pending export
-        JOptionPane.showMessageDialog(this, "Run #" + sessionRuns.size() + " recorded!\nAdjust values and press RUN for next trial,\nor press EXPORT to save all.");
+        //Toggle inputs back on
+        toggleInputs(true);
+
+        //Inform user
+        JOptionPane.showMessageDialog(this, "Run #" + targetList.size() + " recorded!\nAdjust values and press RUN for next trial,\nor press EXPORT to save all.");
     }
 
     /**
-     * Method for exporting all recorded tests and runs to a CSV file.
+     * Method for prompting user on a file location to store all recorded tests and runs.
+     * Passes the temporarily created file at the designated location for exporting to CSV.
      */
     private void exportToCSV() {
+        //Save the comment from the currently displayed run
+        saveCurrentComment();
+
+        //If no tests were conducted at all, inform the user and return
         if (sessionRuns.isEmpty()  && archivedSeries.isEmpty()) {
             JOptionPane.showMessageDialog(this, "No session recorded! Run a test first.", "ERROR!", JOptionPane.ERROR_MESSAGE);
             return;
         }
-
-        //Save the comment from the currently displayed run
-        saveCurrentComment();
 
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Save Flow Bench Data");
@@ -1125,42 +1391,89 @@ public class DashboardView extends JFrame implements SensorObserver {
             //Ensure .csv extension
             if (!file.getName().toLowerCase().endsWith(".csv")) file = new File(file.getParentFile(), file.getName() + ".csv");
 
-            try (PrintWriter writer = new PrintWriter(file)) {
-                //CSV header
-                writer.println("Series Name,Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice (CFM),Mass Flowrate (kg/s),Comments");
+            //Pass the file and export the data to it
+            exportDataToFile(file);
+        }
+    }
 
-                //Export archived series (saved)
-                for (TestSeries series : archivedSeries) {
-                    try {
-                        writeRunsToCSV(writer, series.name(), series.runs());
-                    }
-                    catch (Exception e) {
-                        logMessage("Error while exporting " + series.name() + ": " + e.getMessage());
-                        e.printStackTrace();
-                    }
+    /**
+     * Method for exporting all current data to a CSV file.
+     * Creates a CSV file with all data, and calls for the creation of the flow comparison file.
+     * @param rawDataFile The file to be written at the designated location
+     */
+    public void exportDataToFile(File rawDataFile) {
+        try (PrintWriter writer = new PrintWriter(rawDataFile)) {
+            //Main CSV header
+            writer.println("Series Name,Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice (CFM),Mass Flowrate (kg/s),Comments");
+
+            //Export archived series (saved)
+            for (TestSeries series : archivedSeries) {
+                try { writeRunsToCSV(writer, series.name(), series.runs()); }
+                catch (Exception e) {
+                    logMessage("Error while exporting " + series.name() + ": " + e.getMessage());
                 }
+            }
 
-                //Export current session (unsaved)
-                if (!sessionRuns.isEmpty()) {
-                    try {
-                        writeRunsToCSV(writer, "Current_Unsaved_Session", sessionRuns);
-                    }
-                    catch (Exception e) {
-                        logMessage("Error while exporting " + sessionRuns.size() + ": " + e.getMessage());
-                        e.printStackTrace();
-                    }
+            //Export current session (unsaved)
+            if (!sessionRuns.isEmpty()) {
+                try { writeRunsToCSV(writer, "Current_Unsaved_Session", sessionRuns); }
+                catch (Exception e) {
+                    logMessage("Error while exporting " + sessionRuns.size() + ": " + e.getMessage());
                 }
-
-                //Ensure data is written
-                writer.flush();
-
-                //Inform user
-                JOptionPane.showMessageDialog(this, "Export Successful!");
-                logMessage("Exported " + sessionRuns.size() + " runs to: " + file.getName());
             }
-            catch (IOException e) {
-                JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage());
+
+            //Ensure data is written
+            writer.flush();
+
+            //Inform the user of the creation of the first file
+            logMessage("Exported raw data to: " + rawDataFile.getName());
+
+            //Create secondary summary file
+            String flowComparisonFileName = rawDataFile.getName().replace(".csv", "_FlowComparison.csv");
+            File flowComparisonFile = new File(rawDataFile.getParentFile(), flowComparisonFileName);
+            exportFlowComparisonToFile(flowComparisonFile);
+        }
+        catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage());
+            logMessage("ERROR! Failed to export " + rawDataFile.getName() + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Method for exporting a summarized version of the data (valve lift vs. average flowrate in 28" of H2O).
+     * Writes the data used in the flow comparison chart.
+     * @param flowComparisonFile The file to be written at the same location as the complete dataset file
+     */
+    public void exportFlowComparisonToFile(File flowComparisonFile) {
+        try (PrintWriter writer = new PrintWriter(flowComparisonFile)) {
+            //FlowComparison CSV header
+            writer.println("Series Name,Run ID,Valve Lift (Inches),Average Flowrate in 28\" of H2O (CFM)");
+
+            //Export archived series (saved)
+            for (TestSeries series : archivedSeries) {
+                int runID = 1;
+                for (RunSnapshot run : series.runs()) {
+                    writer.printf("%s,%d,%.3f,%.2f%n", series.name(), runID++, run.getValveLift(), run.getAverageFlowrateIn28OfH2O());
+                }
             }
+
+            //Export current unsaved session
+            if (!sessionRuns.isEmpty()) {
+                int runID = 1;
+                for (RunSnapshot run : sessionRuns) {
+                    writer.printf("%s,%d,%.3f,%.2f%n", "Current_Unsaved_Session", runID++, run.getValveLift(), run.getAverageFlowrateIn28OfH2O());
+                }
+            }
+
+            //Ensure data is written
+            writer.flush();
+
+            //Inform user of the creation of the second file
+            logMessage("Exported flow comparison data to: " + flowComparisonFile.getName());
+        }
+        catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage());
+            logMessage("ERROR! Failed to export " + flowComparisonFile.getName() + ": " + e.getMessage());
         }
     }
 
@@ -1202,15 +1515,18 @@ public class DashboardView extends JFrame implements SensorObserver {
     }
 
     /**
-     * Method for importing a previously saved CSV file.
+     * Method for importing a previously saved raw data CSV file.
      * Rebuilds RunSnapshots and TestSeries, and refreshes UI.
      */
     private void importFromCSV() {
         //Warn user about overwriting data
         if (!sessionRuns.isEmpty() || !archivedSeries.isEmpty()) {
-            int confirm = JOptionPane.showConfirmDialog(this, "Importing data will overwrite your current session!\n Are you sure you want to proceed?", "Confirm Import", JOptionPane.YES_NO_OPTION);
+            int confirm = JOptionPane.showConfirmDialog(this, "Importing data will overwrite your current session!\nAre you sure you want to proceed?", "Confirm Import", JOptionPane.YES_NO_OPTION);
             if (confirm != JOptionPane.YES_OPTION) return;
         }
+
+        //Warn user about selecting the correct file type
+        JOptionPane.showMessageDialog(this, "Make sure to select a raw data file with the proper file structure.\nChoosing an incorrect/altered file will cause issues.", "WARNING!", JOptionPane.WARNING_MESSAGE);
 
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Import Flow Bench Data");
@@ -1295,13 +1611,12 @@ public class DashboardView extends JFrame implements SensorObserver {
                 onSeriesSelected();
 
                 //Inform user
-                JOptionPane.showMessageDialog(this, "Import Successful!");
+                JOptionPane.showMessageDialog(this, "Import successful!");
                 logMessage("Imported data from: " + file.getName());
             }
             catch(Exception e){
                 JOptionPane.showMessageDialog(this, "Error reading file: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 logMessage("Import failed: " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }

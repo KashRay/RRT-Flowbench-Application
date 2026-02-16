@@ -9,7 +9,7 @@ import java.util.List;
  */
 public class RunSnapshot {
     private final Double valveLift, orificeDiameter;
-    private final List<Double> time, p1, p2, p3, t1, t2, t3, cfmIn28OfH2O, cfmAtOrifice, massFlowrate;
+    private final List<Double> time, p1, p2, p3, t1, t2, t3, flowrateIn28OfH2O, flowrateAtOrifice, massFlowrate;
     private String comment;
 
     public RunSnapshot(Double valveLift, Double orificeDiameter,
@@ -23,7 +23,7 @@ public class RunSnapshot {
         this.time = new ArrayList<>(time);
         this.p1 = new ArrayList<>(p1); this.p2 = new ArrayList<>(p2); this.p3 = new ArrayList<>(p3);
         this.t1 = new ArrayList<>(t1); this.t2 = new ArrayList<>(t2); this.t3 = new ArrayList<>(t3);
-        this.cfmIn28OfH2O = new ArrayList<>(flowrateIn28OfH2O); this.cfmAtOrifice = new ArrayList<>(flowrateAtOrifice); this.massFlowrate = new ArrayList<>(massFlowrate);
+        this.flowrateIn28OfH2O = new ArrayList<>(flowrateIn28OfH2O); this.flowrateAtOrifice = new ArrayList<>(flowrateAtOrifice); this.massFlowrate = new ArrayList<>(massFlowrate);
         this.comment = comment;
     }
 
@@ -37,8 +37,8 @@ public class RunSnapshot {
     public List<Double> getT1() { return t1; }
     public List<Double> getT2() { return t2; }
     public List<Double> getT3() {  return t3; }
-    public List<Double> getCFMIn28OfH2O() { return cfmIn28OfH2O; }
-    public List<Double> getCFMAtOrifice() {  return cfmAtOrifice; }
+    public List<Double> getCFMIn28OfH2O() { return flowrateIn28OfH2O; }
+    public List<Double> getCFMAtOrifice() {  return flowrateAtOrifice; }
     public List<Double> getMassFlowrate() {  return massFlowrate; }
     public String getComment() { return comment; }
 
@@ -55,6 +55,6 @@ public class RunSnapshot {
      * @return The average flowrate in 28" of H2O in CFM
      */
     public double getAverageFlowrateIn28OfH2O() {
-        return cfmIn28OfH2O.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        return flowrateIn28OfH2O.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
     }
 }
