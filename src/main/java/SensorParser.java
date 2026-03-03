@@ -51,7 +51,7 @@ public class SensorParser {
                     try {
                         SerialPort port = SerialPort.getCommPort(portName);
                         port.setBaudRate(115200);
-                        port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 1000, 0);
+                        port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 0, 0);
 
                         //If the port is found, stop looking
                         if (port.openPort()) {
@@ -68,10 +68,10 @@ public class SensorParser {
                     }
                 }
 
-                //If still not found, wait 5 seconds before scanning again to save CPU
+                //If still not found, wait 2 seconds before scanning again to save CPU
                 if (connectedPort == null) {
                     try {
-                        Thread.sleep(5000);
+                        Thread.sleep(2000);
                     }
                     catch (InterruptedException e) {
                         return;
@@ -81,18 +81,21 @@ public class SensorParser {
 
             //If we are here, we are connected
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(connectedPort.getInputStream()))) {
-                //Clear any garbage data from the buffer
-                while (reader.ready()) reader.read();
+                //Discard the very first line caught mid-transmission
+                reader.readLine();
 
                 //Read loop
                 while (connectedPort.isOpen()) {
-                    //Read from port
                     String line = reader.readLine();
+
+                    //Attempt to parse the line
                     if (line != null) {
+                        System.out.println(line);
                         parseAndNotify(line, model);
-                    } else {
+                    }
+                    else {
                         //If line is null, the stream has closed (device is unplugged)
-                        throw new Exception("Stream ended");
+                        throw new java.io.IOException("Device unplugged or stream ended");
                     }
                 }
             }
@@ -108,6 +111,7 @@ public class SensorParser {
                 SwingUtilities.invokeLater(() -> dashboard.setDeviceConnected(false));
 
                 try {
+                    //Give the system a second to breath before rescanning
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();

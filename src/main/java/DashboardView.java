@@ -166,7 +166,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         configureChartStyle(flowChart);
 
         //Graph 2: Pressures
-        pressureChart = QuickChart.getChart("Pressure Sensors", "Time (s)", "Pressure (hPa)", "P1", xData, p1Data);
+        pressureChart = QuickChart.getChart("Pressure Sensors", "Time (s)", "Pressure (kPa)", "P1", xData, p1Data);
         pressureChart.addSeries("P2", xData, p2Data);
         pressureChart.addSeries("P3", xData, p3Data);
         configureChartStyle(pressureChart);
@@ -1226,9 +1226,9 @@ public class DashboardView extends JFrame implements SensorObserver {
         double tempWarning = 50.0; //Warning if over 50C
 
         switch (sensorID) {
-            case "P1": sensor = "Pressure Diff #1 (Orifice)"; index = 0; unit = "hPa"; break;
-            case "P2": sensor = "Pressure Diff #2 (Vertical)"; index = 1; unit = "hPa"; break;
-            case "P3": sensor = "Pressure Diff #3 (Bore)"; index = 2; unit = "hPa"; break;
+            case "P1": sensor = "Pressure Diff #1 (Orifice)"; index = 0; unit = "in H2O"; break;
+            case "P2": sensor = "Pressure Diff #2 (Vertical)"; index = 1; unit = "in H2O"; break;
+            case "P3": sensor = "Pressure Diff #3 (Bore)"; index = 2; unit = "in H2O"; break;
             case "T1": sensor = "Temperature #1 (Orifice)"; index = 3; unit = "°C"; break;
             case "T2": sensor = "Temperature #2 (Vertical)"; index = 4; unit = "°C"; break;
             case "T3": sensor = "Temperature #3 (Vacuum)"; index = 5; unit = "°C"; break;
@@ -1365,7 +1365,9 @@ public class DashboardView extends JFrame implements SensorObserver {
         toggleInputs(true);
 
         //Inform user
-        JOptionPane.showMessageDialog(this, "Run #" + targetList.size() + " recorded!\nAdjust values and press RUN for next trial,\nor press EXPORT to save all.");
+        SwingUtilities.invokeLater(() -> { //Wrap the popup in invokeLater so it doesn't freeze the disconnect arduino sequence
+            JOptionPane.showMessageDialog(this, "Run #" + targetList.size() + " recorded!\nAdjust values and press RUN for next trial,\nor press EXPORT to save all.");
+        });
     }
 
     /**
@@ -1404,7 +1406,7 @@ public class DashboardView extends JFrame implements SensorObserver {
     public void exportDataToFile(File rawDataFile) {
         try (PrintWriter writer = new PrintWriter(rawDataFile)) {
             //Main CSV header
-            writer.println("Series Name,Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice (CFM),Mass Flowrate (kg/s),Comments");
+            writer.println("Series Name,Run ID,Valve Lift,Orifice Diameter,Time,P1 (kPa),P2 (kPa),P3 (kPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice (CFM),Mass Flowrate (kg/s),Comments");
 
             //Export archived series (saved)
             for (TestSeries series : archivedSeries) {
@@ -1538,7 +1540,7 @@ public class DashboardView extends JFrame implements SensorObserver {
             try (BufferedReader br = new BufferedReader(new FileReader(file))) {
                 String line = br.readLine();
                 //Check if the header line follows the correct format
-                if (line == null || !line.equals("Series Name,Run ID,Valve Lift,Orifice Diameter,Time,P1 (hPa),P2 (hPa),P3 (hPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice (CFM),Mass Flowrate (kg/s),Comments")) {
+                if (line == null || !line.equals("Series Name,Run ID,Valve Lift,Orifice Diameter,Time,P1 (kPa),P2 (kPa),P3 (kPa),T1 (C),T2 (C),T3 (C),Flowrate at 28\" in H20 (CFM),Flowrate at Orifice (CFM),Mass Flowrate (kg/s),Comments")) {
                     JOptionPane.showMessageDialog(this, "Invalid CSV format! Header mismatch.", "ERROR!", JOptionPane.ERROR_MESSAGE);
                     return;
                 }

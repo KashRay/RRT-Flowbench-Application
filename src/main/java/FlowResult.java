@@ -17,8 +17,8 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
 
     /**
      * Master calculation method and packager.
-     * @param currentP1 The current differential pressure (P1) in hPa
-     * @param currentP2 The current differential pressure (P2) in hPa
+     * @param currentP1 The current differential pressure (P1) in kPa
+     * @param currentP2 The current differential pressure (P2) in kPa
      * @param currentT1 The current temperature (T1) in C
      * @param currentOrificeDiameter The current orifice diameter in inches
      * @return A packaged FlowResult containing all calculated values
@@ -36,7 +36,7 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
         //Calculate actual volumetric flow (CFM)
         double flowrateAtOrifice = calculateCFMatOrifice(massFlowrate, rho);
 
-        //Calculate corrected flow (CFM @ 28" in H20)
+        //Calculate corrected flow (flowrate in 28" of H20)
         double flowrateIn28OfH2O = calculateCFMat28inH20(flowrateAtOrifice, currentP1);
 
         //Return package of calculated values
@@ -54,13 +54,13 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
 
     /**
      * Helper method for calculating the air density based on the current absolute pressure and temperature.
-     * @param pAbsHPa The current absolute pressure (P2) in hPa
+     * @param pAbsKPa The current absolute pressure (P2) in kPa
      * @param tempC The current temperature (T1) in C
      * @return The current calculated air density in kg/m^3
      */
-    private static double calculateRho(double pAbsHPa, double tempC) {
+    private static double calculateRho(double pAbsKPa, double tempC) {
         //Unit conversions
-        double pAbsPa = pAbsHPa * 100;
+        double pAbsPa = pAbsKPa * 1000.0;
         double tempK = tempC + CELSIUS_TO_KELVIN;
 
         // Avoid divide by 0
@@ -72,14 +72,14 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
 
     /**
      * Helper method for calculating the current mass flow rate using the standard orifice equation.
-     * @param deltaPHPa The current differential pressure (P1) in hPa
+     * @param deltaPKPa The current differential pressure (P1) in kPa
      * @param rho The air density in kg/m^3
      * @param dInches The current orifice diameter in inches
      * @return The current mass flow rate in kg/s
      */
-    private static double calculateMassFlowRate(double deltaPHPa, double rho, double dInches) {
+    private static double calculateMassFlowRate(double deltaPKPa, double rho, double dInches) {
         //Unit conversions
-        double deltaPPa = deltaPHPa * 100.0;
+        double deltaPPa = deltaPKPa * 1000.0;
         double dMeters = dInches * INCHES_TO_METERS;
 
         //Geometry
@@ -110,13 +110,13 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
     /**
      * Helper method for correcting the actual CFM to a standard pressure drop of 28 inches of water.
      * @param cfmActual The current actual calculated CFM
-     * @param deltaPHPa The current differential pressure (P1) in hPa
+     * @param deltaPKPa The current differential pressure (P1) in kPa
      * @return The corrected current flow in CFM at 28" in H20
      */
-    private static double calculateCFMat28inH20(double cfmActual, double deltaPHPa) {
+    private static double calculateCFMat28inH20(double cfmActual, double deltaPKPa) {
         //Unit conversions
         double targetPressurePa = 28.0 * DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa;
-        double measuredPressurePa = deltaPHPa * 100.0;
+        double measuredPressurePa = deltaPKPa * 1000.0;
 
         //Avoid divide by 0
         if (measuredPressurePa <= 0) return 0.0;
