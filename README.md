@@ -11,7 +11,7 @@ To run this application, the host computer must have **Java 23** (or a compatibl
 The application is bundled as a "Fat JAR" containing all necessary libraries (such as `jSerialComm` for USB communication and `XChart` for graphing). You only need the single `.jar` file to run the software.
 
 ### On Windows
-1. Download the `RRTFlowbenchApplication-1.0-SNAPSHOT-jar-with-dependencies.jar` file from the repository.
+1. Download the `RRTFlowbenchApplication-1.0.jar` file from the repository.
 2. Ensure the Arduino is plugged into the computer via USB.
 3. Simply **double-click** the `.jar` file to launch the GUI.
    * *Alternative:* Open Command Prompt, navigate to the folder containing the file, and run:
