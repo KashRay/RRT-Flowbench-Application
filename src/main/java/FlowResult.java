@@ -6,14 +6,16 @@
  */
 public record FlowResult(double flowrateAtOrifice, double massFlowrate, double flowrateIn28OfH2O) {
     //Constants
-    public static double DISCHARGE_COEFFICIENT = 0.61;
+    public static double DISCHARGE_COEFFICIENT = 0.611;
     public static double PIPE_INNER_DIAMETER = 4.0;
     public static double EXPANSIBILITY_FACTOR = 1;
-    public static double SPECIFIC_GAS_CONSTANT = 287.1;
+    public static double SPECIFIC_GAS_CONSTANT = 287.05;
     public static double INCHES_TO_METERS = 0.0254;
     public static double CELSIUS_TO_KELVIN = 273.15;
     public static double KgPerS_TO_CFM = 2118.88;
-    public static double DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa = 249.09;
+    public static double DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa = 248.84;
+    public static double kPa_TO_INCH_WATER = 4.01865;
+    public static double ATMOSPHERIC_PRESSURE_IN_Pa = 101325;
 
     /**
      * Master calculation method and packager.
@@ -24,20 +26,17 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
      * @return A packaged FlowResult containing all calculated values
      */
     public static FlowResult calculate(double currentP1, double currentP2, double currentT1, double currentOrificeDiameter) {
-        //Safety check
-        if (currentP1 <= 0 || currentP2 <= 0 || currentOrificeDiameter <= 0) return new FlowResult(0.0, 0.0, 0.0);
-
         //Calculate fluid density (rho)
-        double rho = calculateRho(currentP2, currentT1);
+        double rho = calculateRho(currentP1, currentT1);
 
         //Calculate mass flow rate
-        double massFlowrate = calculateMassFlowRate(currentP1, rho, currentOrificeDiameter);
+        double massFlowrate = calculateMassFlowRate(currentP1, currentP2, rho, currentOrificeDiameter);
 
         //Calculate actual volumetric flow (CFM)
         double flowrateAtOrifice = calculateCFMatOrifice(massFlowrate, rho);
 
         //Calculate corrected flow (flowrate in 28" of H20)
-        double flowrateIn28OfH2O = calculateCFMat28inH20(flowrateAtOrifice, currentP1);
+        double flowrateIn28OfH2O = calculateCFMat28inH20(flowrateAtOrifice, currentP1, currentP2);
 
         //Return package of calculated values
         return new FlowResult(flowrateAtOrifice, massFlowrate, flowrateIn28OfH2O);
@@ -54,13 +53,13 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
 
     /**
      * Helper method for calculating the air density based on the current absolute pressure and temperature.
-     * @param pAbsKPa The current absolute pressure (P2) in kPa
+     * @param p1KPa The current gauge pressure (P1) in kPa
      * @param tempC The current temperature (T1) in C
      * @return The current calculated air density in kg/m^3
      */
-    private static double calculateRho(double pAbsKPa, double tempC) {
+    private static double calculateRho(double p1KPa, double tempC) {
         //Unit conversions
-        double pAbsPa = pAbsKPa * 1000.0;
+        double pAbsPa = ATMOSPHERIC_PRESSURE_IN_Pa - (p1KPa * 1000.0);
         double tempK = tempC + CELSIUS_TO_KELVIN;
 
         // Avoid divide by 0
@@ -72,14 +71,15 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
 
     /**
      * Helper method for calculating the current mass flow rate using the standard orifice equation.
-     * @param deltaPKPa The current differential pressure (P1) in kPa
+     * @param p1KPa The current pressure (P1) in kPa
+     * @param p2KPa The current pressure (P2) in kPa
      * @param rho The air density in kg/m^3
      * @param dInches The current orifice diameter in inches
      * @return The current mass flow rate in kg/s
      */
-    private static double calculateMassFlowRate(double deltaPKPa, double rho, double dInches) {
+    private static double calculateMassFlowRate(double p1KPa, double p2KPa, double rho, double dInches) {
         //Unit conversions
-        double deltaPPa = deltaPKPa * 1000.0;
+        double deltaPPa = Math.abs(p1KPa - p2KPa) * 1000.0;
         double dMeters = dInches * INCHES_TO_METERS;
 
         //Geometry
@@ -110,18 +110,19 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
     /**
      * Helper method for correcting the actual CFM to a standard pressure drop of 28 inches of water.
      * @param cfmActual The current actual calculated CFM
-     * @param deltaPKPa The current differential pressure (P1) in kPa
+     * @param p1KPa The current pressure (P1) in kPa
+     * @param p2KPa The current pressure (P2) in kPa
      * @return The corrected current flow in CFM at 28" in H20
      */
-    private static double calculateCFMat28inH20(double cfmActual, double deltaPKPa) {
+    private static double calculateCFMat28inH20(double cfmActual, double p1KPa, double p2KPa) {
         //Unit conversions
         double targetPressurePa = 28.0 * DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa;
-        double measuredPressurePa = deltaPKPa * 1000.0;
+        double deltaPPa = Math.abs(p1KPa - p2KPa) * 1000.0;
 
         //Avoid divide by 0
-        if (measuredPressurePa <= 0) return 0.0;
+        if (deltaPPa <= 0) return 0.0;
 
         //Formula: Q_28 = Q_actual * sqrt(TargetP / MeasuredP)
-        return cfmActual * Math.sqrt(targetPressurePa / measuredPressurePa);
+        return cfmActual * Math.sqrt(targetPressurePa / deltaPPa);
     }
 }

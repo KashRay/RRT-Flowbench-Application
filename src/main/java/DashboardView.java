@@ -105,6 +105,7 @@ public class DashboardView extends JFrame implements SensorObserver {
     //Logic State
     private boolean isLogging = false;
     private boolean isUpdatingUI = false;
+    private boolean isConnected = false;
     private RunSnapshot currentlyViewedRun = null;
     private long startTime;
     private double targetDuration;
@@ -183,13 +184,15 @@ public class DashboardView extends JFrame implements SensorObserver {
         comparisonChart.setXAxisTitle("Valve Lift (Inches)");
         comparisonChart.setYAxisTitle("CFM");
         configureChartStyle(comparisonChart);
-        comparisonChart.addSeries("Pending...", new double[]{0}, new double[]{0});
 
         //Wrap charts in panels
         flowPanel = new XChartPanel<>(flowChart);
         pressurePanel = new XChartPanel<>(pressureChart);
         temperaturePanel = new XChartPanel<>(temperatureChart);
         comparisonPanel = new XChartPanel<>(comparisonChart);
+
+        //Start the flow comparison chart as a blank canvas
+        setComparisonChartEmpty(true);
     }
 
     /**
@@ -203,6 +206,25 @@ public class DashboardView extends JFrame implements SensorObserver {
         chart.getStyler().setZoomEnabled(true);
         chart.getStyler().setMarkerSize(10);
         chart.getStyler().setDefaultSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Line);
+    }
+
+    /**
+     * Helper method to toggle chart visibility components based on data presence.
+     * @param isEmpty True if the chart has no data (hides grids/ticks), false if data exists (shows grids/ticks)
+     */
+    private void setComparisonChartEmpty(boolean isEmpty) {
+        //Toggle grid lines
+        comparisonChart.getStyler().setPlotGridLinesVisible(!isEmpty);
+
+        //Toggle axis numbers (ticks)
+        comparisonChart.getStyler().setXAxisTicksVisible(!isEmpty);
+        comparisonChart.getStyler().setYAxisTicksVisible(!isEmpty);
+
+        //Toggle legend
+        comparisonChart.getStyler().setLegendVisible(!isEmpty);
+
+        //Force a repaint to update the view immediately
+        comparisonPanel.repaint();
     }
 
     /**
@@ -300,11 +322,11 @@ public class DashboardView extends JFrame implements SensorObserver {
         c.weighty = 0.5;
 
         //Calculated results (light orange boxes)
-        flowrateIn28OfH2OLabel = createStyledLabel("CFM at 28 in H20:", new Color(255, 200, 150));
+        flowrateIn28OfH2OLabel = createStyledLabel("Flowrate in 28\" of H2O: __ CFM", new Color(255, 200, 150));
         c.gridx = 0; c.gridy = 0; c.gridwidth = 1; panel.add(flowrateIn28OfH2OLabel, c);
-        flowrateAtOrificeLabel = createStyledLabel("CFM at Orifice:", new Color(255, 200, 150));
+        flowrateAtOrificeLabel = createStyledLabel("Flowrate at Orifice: __ CFM", new Color(255, 200, 150));
         c.gridx = 1; c.gridy = 0; c.gridwidth = 1; panel.add(flowrateAtOrificeLabel, c);
-        massFlowrateLabel = createStyledLabel("Mass Flow Rate:", new Color(255, 200, 150));
+        massFlowrateLabel = createStyledLabel("Mass Flow Rate: __ Kg/s", new Color(255, 200, 150));
         c.gridx = 2; c.gridy = 0; c.gridwidth = 1; panel.add(massFlowrateLabel, c);
 
         //ROW 1: Inputs and Duration
@@ -395,7 +417,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         JPanel statusPanel = new JPanel(new GridLayout(6, 1, 5, 5));
         sensorStatusLabels = new JLabel[6];
         String[] statusNames = {
-                "Pressure Diff #1 (Orifice):", "Pressure Diff #2 (Vertical):", "Pressure Diff #3 (Bore):",
+                "Pressure Diff #1 (Orifice Upstream):", "Pressure Diff #2 (Orifice Downstream):", "Pressure Diff #3 (Bore):",
                 "Temperature #1 (Orifice):", "Temperature #2 (Vertical):", "Temperature #3 (Vacuum):"
         };
 
@@ -643,6 +665,9 @@ public class DashboardView extends JFrame implements SensorObserver {
      * @param connected True if connected, false if not connected
      */
     public void setDeviceConnected(boolean connected) {
+        //Update the current connection status variable
+        this.isConnected = connected;
+
         //If connection is lost while logging, force a stop immediately to save data
         if (!connected && isLogging) {
             logMessage("WARNING! Device disconnected. Stopping run...");
@@ -925,6 +950,9 @@ public class DashboardView extends JFrame implements SensorObserver {
         //Clear old series
         comparisonChart.getSeriesMap().clear();
 
+        //Track if data is available to plot
+        boolean hasData = false;
+
         for (TestSeries series : archivedSeries) {
             List<Double> xLifts = new ArrayList<>();
             List<Double> yFlows = new ArrayList<>();
@@ -938,9 +966,12 @@ public class DashboardView extends JFrame implements SensorObserver {
             if (!xLifts.isEmpty()) {
                 XYSeries xySeries = comparisonChart.addSeries(series.name(), xLifts, yFlows);
                 xySeries.setMarker(SeriesMarkers.CIRCLE);
+                hasData = true;
             }
         }
-        comparisonPanel.repaint();
+
+        //Switch styling based on whether data exists
+        setComparisonChartEmpty(!hasData);
     }
 
     /**
@@ -961,8 +992,7 @@ public class DashboardView extends JFrame implements SensorObserver {
 
 
             comparisonChart.getSeriesMap().clear();
-            comparisonChart.addSeries("Pending...", new double[]{0}, new double[]{0});
-            comparisonPanel.repaint();
+            setComparisonChartEmpty(true);
 
             currentlyViewedRun = null;
             commentsArea.setText("");
@@ -1187,10 +1217,10 @@ public class DashboardView extends JFrame implements SensorObserver {
         boolean hasRun = (enabled && currentlyViewedRun != null);
 
         //Toggle buttons
-        runButton.setEnabled(enabled);
+        runButton.setEnabled(enabled && isConnected);
         stopButton.setEnabled(!enabled);
         exportButton.setEnabled(enabled);
-        nextTestMenuItem.setEnabled(enabled);
+        nextTestMenuItem.setEnabled(enabled && isConnected);
         redoRunButton.setEnabled(hasRun);
         deleteRunButton.setEnabled(hasRun);
 
@@ -1203,7 +1233,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         runSelector.setEnabled(enabled);
 
         //Toggle menu buttons
-        runMenuItem.setEnabled(enabled);
+        runMenuItem.setEnabled(enabled && isConnected);
         stopMenuItem.setEnabled(!enabled);
         nextTestMenuItem.setEnabled(enabled);
         exportMenuItem.setEnabled(enabled);
@@ -1226,8 +1256,8 @@ public class DashboardView extends JFrame implements SensorObserver {
         double tempWarning = 50.0; //Warning if over 50C
 
         switch (sensorID) {
-            case "P1": sensor = "Pressure Diff #1 (Orifice)"; index = 0; unit = "in H2O"; break;
-            case "P2": sensor = "Pressure Diff #2 (Vertical)"; index = 1; unit = "in H2O"; break;
+            case "P1": sensor = "Pressure Diff #1 (Orifice Upstream)"; index = 0; unit = "in H2O"; break;
+            case "P2": sensor = "Pressure Diff #2 (Orifice Downstream)"; index = 1; unit = "in H2O"; break;
             case "P3": sensor = "Pressure Diff #3 (Bore)"; index = 2; unit = "in H2O"; break;
             case "T1": sensor = "Temperature #1 (Orifice)"; index = 3; unit = "°C"; break;
             case "T2": sensor = "Temperature #2 (Vertical)"; index = 4; unit = "°C"; break;
@@ -1235,7 +1265,9 @@ public class DashboardView extends JFrame implements SensorObserver {
         }
 
         if (index != -1) {
-            sensorStatusLabels[index].setText(String.format("%s: %.1f %s", sensor, value, unit));
+            //Display the pressures in "inch water" (requires conversion)
+            if (sensorID.contains("P")) sensorStatusLabels[index].setText(String.format("%s: %.1f %s", sensor, value * FlowResult.kPa_TO_INCH_WATER, unit));
+            else sensorStatusLabels[index].setText(String.format("%s: %.1f %s", sensor, value, unit));
 
             //Safety check logic for temperature sensor 3
             if (sensorID.equals("T3") && value > tempWarning) {
