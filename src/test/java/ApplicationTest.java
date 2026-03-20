@@ -44,7 +44,7 @@ public class ApplicationTest {
      */
     @Test
     public void testFlowResultCalculations() {
-        FlowResult flowResult = FlowResult.calculate(5.5, 7.3, 22.5, 2.125);
+        FlowResult flowResult = FlowResult.calculate(5.5, 7.3, 1.0, 22.5, 2.125);
         System.out.println("Flowrate at Orifice: " + flowResult.flowrateAtOrifice() + " CFM");
         System.out.println("Mass Flowrate: " + flowResult.massFlowrate() + " kg/s");
         System.out.println("Flowrate in 28\" of H2O: " + flowResult.flowrateIn28OfH2O() + " CFM");

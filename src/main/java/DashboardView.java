@@ -417,7 +417,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         JPanel statusPanel = new JPanel(new GridLayout(6, 1, 5, 5));
         sensorStatusLabels = new JLabel[6];
         String[] statusNames = {
-                "Pressure Diff #1 (Orifice Upstream):", "Pressure Diff #2 (Orifice Downstream):", "Pressure Diff #3 (Bore):",
+                "Pressure Diff #1 (Orifice Upstream):", "Pressure Diff #2 (Orifice Downstream):", "Pressure Diff #3 (Test Pressure):",
                 "Temperature #1 (Orifice):", "Temperature #2 (Vertical):", "Temperature #3 (Vacuum):"
         };
 
@@ -1258,7 +1258,7 @@ public class DashboardView extends JFrame implements SensorObserver {
         switch (sensorID) {
             case "P1": sensor = "Pressure Diff #1 (Orifice Upstream)"; index = 0; unit = "in H2O"; break;
             case "P2": sensor = "Pressure Diff #2 (Orifice Downstream)"; index = 1; unit = "in H2O"; break;
-            case "P3": sensor = "Pressure Diff #3 (Bore)"; index = 2; unit = "in H2O"; break;
+            case "P3": sensor = "Pressure Diff #3 (Test Pressure)"; index = 2; unit = "in H2O"; break;
             case "T1": sensor = "Temperature #1 (Orifice)"; index = 3; unit = "°C"; break;
             case "T2": sensor = "Temperature #2 (Vertical)"; index = 4; unit = "°C"; break;
             case "T3": sensor = "Temperature #3 (Vacuum)"; index = 5; unit = "°C"; break;
@@ -1287,7 +1287,7 @@ public class DashboardView extends JFrame implements SensorObserver {
      */
     private FlowResult performRealTimeCalculations() {
         //Create package of calculated physics values
-        FlowResult results = FlowResult.calculate(currentP1, currentP2, currentT1, currentOrificeDiameter);
+        FlowResult results = FlowResult.calculate(currentP1, currentP2, currentP3, currentT1, currentOrificeDiameter);
 
         //Update result labels immediately
         flowrateIn28OfH2OLabel.setText(String.format("Flowrate at 28\" in H20: %.2f CFM", results.flowrateIn28OfH2O()));

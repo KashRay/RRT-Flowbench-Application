@@ -25,7 +25,7 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
      * @param currentOrificeDiameter The current orifice diameter in inches
      * @return A packaged FlowResult containing all calculated values
      */
-    public static FlowResult calculate(double currentP1, double currentP2, double currentT1, double currentOrificeDiameter) {
+    public static FlowResult calculate(double currentP1, double currentP2, double currentP3, double currentT1, double currentOrificeDiameter) {
         //Calculate fluid density (rho)
         double rho = calculateRho(currentP1, currentT1);
 
@@ -36,7 +36,7 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
         double flowrateAtOrifice = calculateCFMatOrifice(massFlowrate, rho);
 
         //Calculate corrected flow (flowrate in 28" of H20)
-        double flowrateIn28OfH2O = calculateCFMat28inH20(flowrateAtOrifice, currentP1, currentP2);
+        double flowrateIn28OfH2O = calculateCFMat28inH20(flowrateAtOrifice, currentP3);
 
         //Return package of calculated values
         return new FlowResult(flowrateAtOrifice, massFlowrate, flowrateIn28OfH2O);
@@ -110,14 +110,13 @@ public record FlowResult(double flowrateAtOrifice, double massFlowrate, double f
     /**
      * Helper method for correcting the actual CFM to a standard pressure drop of 28 inches of water.
      * @param cfmActual The current actual calculated CFM
-     * @param p1KPa The current pressure (P1) in kPa
-     * @param p2KPa The current pressure (P2) in kPa
+     * @param p3KPa The current pressure (P3) in kPa
      * @return The corrected current flow in CFM at 28" in H20
      */
-    private static double calculateCFMat28inH20(double cfmActual, double p1KPa, double p2KPa) {
+    private static double calculateCFMat28inH20(double cfmActual, double p3KPa) {
         //Unit conversions
         double targetPressurePa = 28.0 * DIFFERENTIAL_PRESSURE_IN_H20_TO_Pa;
-        double deltaPPa = Math.abs(p1KPa - p2KPa) * 1000.0;
+        double deltaPPa = Math.abs(p3KPa) * 1000.0;
 
         //Avoid divide by 0
         if (deltaPPa <= 0) return 0.0;
