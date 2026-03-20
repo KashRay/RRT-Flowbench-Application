@@ -89,10 +89,7 @@ public class SensorParser {
                     String line = reader.readLine();
 
                     //Attempt to parse the line
-                    if (line != null) {
-                        System.out.println(line);
-                        parseAndNotify(line, model);
-                    }
+                    if (line != null) parseAndNotify(line, model);
                     else {
                         //If line is null, the stream has closed (device is unplugged)
                         throw new java.io.IOException("Device unplugged or stream ended");
